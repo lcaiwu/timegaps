@@ -2172,6 +2172,17 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
                 Description
               </p>
               <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+                {!isCurrentWeek && (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                    style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }}
+                    fill="#da1e28"
+                    aria-label="Warning"
+                  >
+                    <path d="M8 1C4.1 1 1 4.1 1 8s3.1 7 7 7 7-3.1 7-7-3.1-7-7-7zm-.75 4h1.5v4.5h-1.5V5zM8 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" />
+                  </svg>
+                )}
                 <p style={{ fontSize: 14, fontWeight: 400, color: '#161616', lineHeight: 'normal', flex: 1 }}>
                   {isCurrentWeek
                     ? 'This report shows the Getpages metric over time for Db2 Data Sharing Group DB0H, including expected values and normal variation ranges.'
