@@ -179,8 +179,12 @@ function DefaultTooltip({ active, payload }: { active?: boolean; payload?: any[]
 
   const fmtGP = (v: number | null) =>
     v === null
-      ? (d.failureDot === 0 ? '0 Getpages' : 'System failure')
+      ? 'System failure'
       : `${v.toLocaleString()} Getpages`;
+
+  // Blue failure-dot points sit at the x-axis (value 0) — always show "0 Getpages"
+  const actualLabel = d.failureDot === 0 ? '0 Getpages' : fmtGP(d.actual);
+  const isSystemFailure = d.actual === null && d.failureDot !== 0;
 
   const sdRange = `${d.sd2Lower.toLocaleString()} - ${d.sd2Upper.toLocaleString()}`;
 
@@ -209,8 +213,8 @@ function DefaultTooltip({ active, payload }: { active?: boolean; payload?: any[]
       {/* Actual */}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
         <span style={{ color: '#000000' }}>Actual</span>
-        <span style={{ color: d.actual === null ? '#da1e28' : '#6f6f6f', fontWeight: d.actual === null ? 600 : 400 }}>
-          {fmtGP(d.actual)}
+        <span style={{ color: isSystemFailure ? '#da1e28' : '#6f6f6f', fontWeight: isSystemFailure ? 600 : 400 }}>
+          {isSystemFailure ? 'System failure' : actualLabel}
         </span>
       </div>
       {/* Expected */}
