@@ -209,7 +209,7 @@ function DefaultTooltip({ active, payload }: { active?: boolean; payload?: any[]
       {/* Actual */}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
         <span style={{ color: '#000000' }}>Actual</span>
-        <span style={{ color: d.actual === null && d.failureDot !== 0 ? '#e7000b' : '#6f6f6f' }}>
+        <span style={{ color: d.actual === null ? '#da1e28' : '#6f6f6f', fontWeight: d.actual === null ? 600 : 400 }}>
           {fmtGP(d.actual)}
         </span>
       </div>
@@ -297,14 +297,14 @@ function DefaultGraph({ zoomRange }: { zoomRange: [number, number] }) {
         {/* Actual — red line, breaks cleanly at each failure gap */}
         <Line
           dataKey="actual"
-          stroke="#e7000b"
+          stroke="#0056e1"
           strokeWidth={2}
           legendType="none"
           isAnimationActive={false}
           type="linear"
           connectNulls={false}
           dot={false}
-          activeDot={{ r: 4, fill: '#e7000b', stroke: '#e7000b', strokeWidth: 0 }}
+          activeDot={{ r: 4, fill: '#0056e1', stroke: '#0056e1', strokeWidth: 0 }}
         />
 
         {/* System failure bands */}
@@ -354,36 +354,54 @@ function DefaultGraph({ zoomRange }: { zoomRange: [number, number] }) {
 
 
 // ─── Year graph (Current Year selection) — Figma node 746:16221 ──────────────
-// Monthly data: Aug '25 – Aug '26 (13 months) with weekly data points
-// Matches Figma: blue line + dots, amber expected, red/green dashed SD, light-blue band, red anomaly bands
+// Daily data: Aug 4 2025 – Aug 3 2026 (365 days)
+// Dense daily points give a fragmented, realistic look; zoom reveals per-day detail.
 
 const YEAR_EXPECTED_BASE = 1_700_000;
 const YEAR_SD_BASE = 320_000;
 
-function buildYearData() {
-  // 13 months: Aug 2025 – Aug 2026, sampled weekly (≈52 data points + a few extras)
-  const months = [
-    { label: "Aug '25", monthIndex: 0 },
-    { label: "Sep '25", monthIndex: 1 },
-    { label: "Oct '25", monthIndex: 2 },
-    { label: "Nov '25", monthIndex: 3 },
-    { label: "Dec '25", monthIndex: 4 },
-    { label: "Jan '26", monthIndex: 5 },
-    { label: "Feb '26", monthIndex: 6 },
-    { label: "Mar '26", monthIndex: 7 },
-    { label: "Apr '26", monthIndex: 8 },
-    { label: "May '26", monthIndex: 9 },
-    { label: "Jun '26", monthIndex: 10 },
-    { label: "Jul '26", monthIndex: 11 },
-    { label: "Aug '26", monthIndex: 12 },
-  ];
+// Outage windows as [startDay, endDay] inclusive (0-based from Aug 4 2025).
+// Mix of wide (3-7 day) and narrow (1-2 day) gaps spread across the year.
+const YEAR_OUTAGE_WINDOWS: [number, number][] = [
+  [4,   8],   // narrow – early Aug '25
+  [18,  19],  // narrow – mid Aug '25
+  [34,  40],  // wide   – early Sep '25
+  [55,  56],  // narrow – late Sep '25
+  [70,  76],  // wide   – mid Oct '25
+  [88,  89],  // narrow – late Oct '25
+  [100, 106], // wide   – early Nov '25
+  [118, 120], // narrow – mid Nov '25
+  [133, 139], // wide   – early Dec '25
+  [152, 153], // narrow – mid Dec '25
+  [165, 171], // wide   – late Dec '25 / early Jan '26
+  [183, 184], // narrow – mid Jan '26
+  [196, 202], // wide   – late Jan '26
+  [214, 215], // narrow – early Feb '26
+  [228, 230], // narrow – mid Feb '26
+  [245, 251], // wide   – early Mar '26
+  [263, 264], // narrow – mid Mar '26
+  [278, 284], // wide   – early Apr '26
+  [295, 296], // narrow – mid Apr '26
+  [309, 315], // wide   – early May '26
+  [326, 327], // narrow – mid May '26
+  [338, 340], // narrow – late May '26
+  [350, 356], // wide   – mid Jun '26
+  [364, 364], // narrow – late Jun '26 (single day)
+];
 
+// Build a Set for O(1) lookup
+const OUTAGE_DAY_SET = new Set<number>();
+for (const [s, e] of YEAR_OUTAGE_WINDOWS) {
+  for (let d = s; d <= e; d++) OUTAGE_DAY_SET.add(d);
+}
+
+function buildYearData() {
   type YearPoint = {
     date: string;
-    weekStart: string;        // ISO date of the Monday starting this week
+    weekStart: string;
     monthLabel: string;
-    actual: number | null;    // null = system failure; line breaks here
-    failureDot: number | null; // 0 at midpoint of each null run for x-axis dot
+    actual: number | null;
+    failureDot: number | null;
     expected: number;
     sd2Upper: number;
     sd2Lower: number;
@@ -392,69 +410,67 @@ function buildYearData() {
   };
 
   const points: YearPoint[] = [];
-
-  // Anchor: Aug 4 2025 is a Monday — week 0 of the dataset
   const ANCHOR = new Date('2025-08-04');
+  const TOTAL_DAYS = 365;
 
-  // Build weekly data points for each month (~4-5 weeks per month)
-  let weekIndex = 0;
-  for (const { label, monthIndex } of months) {
-    const weeksInMonth = monthIndex === 1 ? 4 : 4; // ~4 weeks per month
-    for (let w = 0; w < weeksInMonth; w++) {
-      const t = (monthIndex + w / weeksInMonth) / 12;
-      // Compute the Monday of this week
-      const weekDate = new Date(ANCHOR);
-      weekDate.setDate(ANCHOR.getDate() + weekIndex * 7);
-      const weekStart = weekDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      // Expected rises in a gentle S-curve then levels off (matches Figma)
-      const expectedCurve = YEAR_EXPECTED_BASE + Math.sin(t * Math.PI * 0.6) * 200_000 + t * 100_000;
-      const expected = Math.round(expectedCurve);
-      // SD grows slightly over time
-      const sd = YEAR_SD_BASE + weekIndex * 1_500;
-      const sd2U = Math.round(expected + 2 * sd);
-      const sd2L = Math.max(0, Math.round(expected - 2 * sd));
+  const MONTH_LABELS: Record<number, string> = {
+    0: "Aug '25", 1: "Sep '25", 2: "Oct '25", 3: "Nov '25",
+    4: "Dec '25", 5: "Jan '26", 6: "Feb '26", 7: "Mar '26",
+    8: "Apr '26", 9: "May '26", 10: "Jun '26", 11: "Jul '26",
+  };
 
-      // Actual: volatile, with some nulls for anomaly periods (matching red vertical bands in Figma)
-      // Anomaly windows (week indices approx): 3-5, 15-17, 27-29, 38-40
-      const inAnomalyWindow =
-        (weekIndex >= 3 && weekIndex <= 5) ||
-        (weekIndex >= 15 && weekIndex <= 17) ||
-        (weekIndex >= 27 && weekIndex <= 29) ||
-        (weekIndex >= 38 && weekIndex <= 40);
+  for (let day = 0; day < TOTAL_DAYS; day++) {
+    const d = new Date(ANCHOR);
+    d.setDate(ANCHOR.getDate() + day);
 
-      const noise = Math.sin(weekIndex * 1.1 + 2.3) * 380_000 +
-                    Math.cos(weekIndex * 0.6 + 0.8) * 180_000;
-      // In anomaly windows, actual can be very low or null for 1 sub-point
-      const actual = inAnomalyWindow && w === 1
-        ? null
-        : Math.max(0, Math.round(expected + noise));
+    // month 0-11 relative to Aug 2025
+    const absMonth = d.getFullYear() * 12 + d.getMonth();
+    const anchorAbsMonth = 2025 * 12 + 7; // Aug 2025
+    const relMonth = absMonth - anchorAbsMonth;
+    const monthLabel = MONTH_LABELS[relMonth] ?? "Aug '26";
 
-      points.push({
-        date: `${label} W${w + 1}`,
-        weekStart,
-        monthLabel: label,
-        actual,
-        failureDot: null, // filled in below
-        expected,
-        sd2Upper: sd2U,
-        sd2Lower: sd2L,
-        bandOuterBase: sd2L,
-        bandOuterHeight: sd2U - sd2L,
-      });
-      weekIndex++;
-    }
+    const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const t = day / TOTAL_DAYS;
+    const expectedCurve = YEAR_EXPECTED_BASE
+      + Math.sin(t * Math.PI * 0.6) * 200_000
+      + t * 100_000;
+    const expected = Math.round(expectedCurve);
+
+    const sd = YEAR_SD_BASE + day * 60; // grows gently over year
+    const sd2U = Math.round(expected + 2 * sd);
+    const sd2L = Math.max(0, Math.round(expected - 2 * sd));
+
+    // Volatile noise — higher frequency than weekly for a dense jagged look
+    const noise = Math.sin(day * 0.31 + 1.3) * 340_000
+                + Math.cos(day * 0.17 + 0.8) * 160_000
+                + Math.sin(day * 0.07 + 2.1) * 80_000;
+
+    const isOutage = OUTAGE_DAY_SET.has(day);
+    const actual = isOutage ? null : Math.max(0, Math.round(expected + noise));
+
+    points.push({
+      date: dateLabel,
+      weekStart: dateLabel,
+      monthLabel,
+      actual,
+      failureDot: null,
+      expected,
+      sd2Upper: sd2U,
+      sd2Lower: sd2L,
+      bandOuterBase: sd2L,
+      bandOuterHeight: sd2U - sd2L,
+    });
   }
 
-  // Place failureDot=0 (x-axis) at the point just before and just after each null run
+  // Place failureDot=0 at the boundary points flanking each null run
   const n = points.length;
   let i = 0;
   while (i < n) {
     if (points[i].actual !== null) { i++; continue; }
     let runEnd = i;
     while (runEnd < n && points[runEnd].actual === null) runEnd++;
-    // point just before the gap
     if (i > 0) points[i - 1].failureDot = 0;
-    // point just after the gap
     if (runEnd < n) points[runEnd].failureDot = 0;
     i = runEnd;
   }
@@ -464,9 +480,6 @@ function buildYearData() {
 
 const yearData = buildYearData();
 
-// Anomaly (red band) month indices — matching Figma vertical red shading
-const YEAR_ANOMALY_MONTHS = ["Nov '25", "Dec '25", "Jan '26", "Apr '26", "May '26", "Jul '26", "Aug '26"];
-
 function YearTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
@@ -474,8 +487,11 @@ function YearTooltip({ active, payload }: { active?: boolean; payload?: any[] })
 
   const fmtGP = (v: number | null) =>
     v === null
-      ? (d.failureDot === 0 ? '0 Getpages' : 'No data')
+      ? 'No data'
       : `${v.toLocaleString()} Getpages`;
+  // Failure-dot points sit at the x-axis (y=0) — show 0 Getpages for Current
+  const currentLabel = d.failureDot === 0 ? '0 Getpages' : fmtGP(d.actual);
+  const isSystemFailure = d.actual === null && d.failureDot !== 0;
   const sdRange = `${d.sd2Lower.toLocaleString()} - ${d.sd2Upper.toLocaleString()}`;
 
   return (
@@ -498,12 +514,14 @@ function YearTooltip({ active, payload }: { active?: boolean; payload?: any[] })
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontWeight: 500, color: '#000000' }}>
         <span>{d.weekStart ?? d.monthLabel}</span>
         <span style={{ color: '#6b7280', fontWeight: 400, fontSize: 11 }}>
-          {d.date.split(' W')[1] ? `Week ${d.date.split(' W')[1]}` : ''}
+          {new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
         </span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
         <span style={{ color: '#000000' }}>Current</span>
-        <span style={{ color: '#6f6f6f' }}>{fmtGP(d.actual)}</span>
+        <span style={{ color: isSystemFailure ? '#da1e28' : '#6f6f6f', fontWeight: isSystemFailure ? 600 : 400 }}>
+          {isSystemFailure ? 'System failure' : currentLabel}
+        </span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
         <span style={{ color: '#000000' }}>Expected</span>
@@ -662,6 +680,7 @@ function YearGraph({ zoomRange, onZoomChange }: {
   onZoomChange: (r: [number, number]) => void;
 }) {
   const visibleData = yearData.slice(zoomRange[0], zoomRange[1] + 1);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const xTick = ({ x, y, payload }: any) => {
     // Only render month-start ticks
@@ -709,7 +728,14 @@ function YearGraph({ zoomRange, onZoomChange }: {
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={visibleData} margin={{ top: 10, right: 16, left: 48, bottom: 28 }}>
+      <ComposedChart
+        data={visibleData}
+        margin={{ top: 10, right: 16, left: 48, bottom: 28 }}
+        onMouseMove={(state: any) => {
+          if (state.activeTooltipIndex != null) setHoveredIndex(state.activeTooltipIndex);
+        }}
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
         <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e5e7eb" strokeOpacity={0.8} />
 
         <XAxis
@@ -729,8 +755,11 @@ function YearGraph({ zoomRange, onZoomChange }: {
           tickLine={{ stroke: '#e5e7eb', strokeWidth: 1 }}
         />
         <Tooltip
+          isAnimationActive={false}
+          cursor={{ stroke: '#0056e1', strokeWidth: 1, strokeDasharray: '4 2' }}
+          active={hoveredIndex !== null}
+          payload={hoveredIndex !== null ? [{ payload: visibleData[hoveredIndex] }] : []}
           content={<YearTooltip />}
-          cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 2' }}
         />
 
         <ReferenceLine y={0} stroke="#d1d5db" strokeWidth={1} />
@@ -979,8 +1008,8 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: any[] 
         </div>
         <div className="flex justify-between gap-4">
           <span className="text-gray-500">Current</span>
-          <span className="font-medium text-gray-900">
-            {d.actual === null ? '— (no data)' : d.actual === 0 ? '0 Getpages' : `${d.actual.toLocaleString()} Getpages`}
+          <span style={{ fontWeight: 600, color: d.actual === null ? '#da1e28' : '#111827' }}>
+            {d.actual === null ? 'System failure' : d.actual === 0 ? '0 Getpages' : `${d.actual.toLocaleString()} Getpages`}
           </span>
         </div>
         <div className="border-t border-gray-100 pt-1 mt-1">
@@ -1051,9 +1080,9 @@ function ChartLegend({ showPattern }: { showPattern?: boolean }) {
   return (
     <div className="bg-white border border-[#e5e7eb] flex flex-col gap-[4px] items-start px-[9px] py-[5px] rounded-[4px]">
 
-      {/* Actual value — red solid line */}
+      {/* Actual value — blue solid line */}
       <div className="flex gap-[6px] items-center w-full">
-        <div className="bg-[#e7000b] h-[2px] shrink-0 w-[16px]" />
+        <div className="bg-[#0056e1] h-[2px] shrink-0 w-[16px]" />
         <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[normal] text-[#525252] whitespace-nowrap">
           Actual value
         </span>
@@ -1458,22 +1487,22 @@ function GetpagesChart({ data, margin, showPattern, showOverlays = true, visual 
             dot={false} legendType="none" isAnimationActive={false} connectNulls={false} strokeLinejoin="round" type={lineType} />
         )}
 
-        {/* Actual — Figma: red solid line, no zero dots */}
+        {/* Actual — blue solid line */}
         {showActual && <Line
           dataKey="actual"
-          stroke="#e7000b"
+          stroke="#0056e1"
           strokeWidth={lineWidth}
           legendType="none"
           isAnimationActive={false}
           type={lineType}
           connectNulls={false}
-          activeDot={{ r: 4, fill: '#e7000b', stroke: '#e7000b', strokeWidth: 0 }}
+          activeDot={{ r: 4, fill: '#0056e1', stroke: '#0056e1', strokeWidth: 0 }}
           dot={(props: any) => {
             const { cx, cy, payload } = props;
             if (payload.actual !== 0) return <g key={`dot-${payload.date}`} />;
             return (
               <g key={`zero-${payload.date}`}>
-                <circle cx={cx} cy={cy} r={4} fill="#fff" stroke="#e7000b" strokeWidth={2} />
+                <circle cx={cx} cy={cy} r={4} fill="#fff" stroke="#0056e1" strokeWidth={2} />
               </g>
             );
           }}
@@ -1668,7 +1697,7 @@ function GraphEditPanel({
 
           {/* Series visibility */}
           <PanelSection title="Series" icon={<Eye size={12} />}>
-            <SeriesToggleRow label="Actual value" color="#dc2626" active={showActual} onToggle={() => setShowActual(!showActual)} />
+            <SeriesToggleRow label="Actual value" color="#0056e1" active={showActual} onToggle={() => setShowActual(!showActual)} />
             <SeriesToggleRow label="Expected value" color="#f59e0b" active={showExpected} onToggle={() => setShowExpected(!showExpected)} />
             <SeriesToggleRow label="±SD bands" color="#16a34a" active={showSDBands} onToggle={() => setShowSDBands(!showSDBands)} />
           </PanelSection>
