@@ -64,7 +64,7 @@ const IconEdit = ({ size = 14, color = 'white' }: { size?: number; color?: strin
 
 // ─── Default graph (login state) — Figma node 630:21585 ──────────────────────
 // Hourly intraday data: 12:00 PM – 7:00 PM (5-min intervals)
-// Matches the Figma design: red actual, amber expected, green dashed ±2SD, light-blue bands
+// Matches the Figma design: blue actual, blue expected (no gaps), green dashed ±2SD, light-blue bands
 
 const DEFAULT_EXPECTED_BASE = 1_600_000;
 const DEFAULT_SD_BASE = 230_000;
@@ -291,8 +291,8 @@ function DefaultGraph({ zoomRange }: { zoomRange: [number, number] }) {
         {/* -2 SD lower boundary — green dashed */}
         <Line name="sd2-lower" dataKey="sd2Lower" stroke="#15803d" strokeWidth={1} strokeDasharray="5 3" dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="linear" />
 
-        {/* Expected — amber/gold solid */}
-        <Line name="expected" dataKey="expected" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="linear" />
+        {/* Expected — yellow solid, always connected (no gaps) */}
+        <Line name="expected" dataKey="expected" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="monotone" connectNulls />
 
         {/* Actual — red line, breaks cleanly at each failure gap */}
         <Line
@@ -304,7 +304,7 @@ function DefaultGraph({ zoomRange }: { zoomRange: [number, number] }) {
           type="linear"
           connectNulls={false}
           dot={false}
-          activeDot={{ r: 4, fill: '#0056e1', stroke: '#0056e1', strokeWidth: 0 }}
+          activeDot={{ r: 4, fill: '#4b5563', stroke: '#ffffff', strokeWidth: 1.5 }}
         />
 
         {/* System failure bands */}
@@ -361,32 +361,18 @@ const YEAR_EXPECTED_BASE = 1_700_000;
 const YEAR_SD_BASE = 320_000;
 
 // Outage windows as [startDay, endDay] inclusive (0-based from Aug 4 2025).
-// Mix of wide (3-7 day) and narrow (1-2 day) gaps spread across the year.
+// Intentionally sparse — ~10 gaps total, well spaced, mix of wide and narrow.
 const YEAR_OUTAGE_WINDOWS: [number, number][] = [
-  [4,   8],   // narrow – early Aug '25
-  [18,  19],  // narrow – mid Aug '25
-  [34,  40],  // wide   – early Sep '25
-  [55,  56],  // narrow – late Sep '25
-  [70,  76],  // wide   – mid Oct '25
-  [88,  89],  // narrow – late Oct '25
-  [100, 106], // wide   – early Nov '25
-  [118, 120], // narrow – mid Nov '25
-  [133, 139], // wide   – early Dec '25
-  [152, 153], // narrow – mid Dec '25
-  [165, 171], // wide   – late Dec '25 / early Jan '26
-  [183, 184], // narrow – mid Jan '26
-  [196, 202], // wide   – late Jan '26
-  [214, 215], // narrow – early Feb '26
-  [228, 230], // narrow – mid Feb '26
-  [245, 251], // wide   – early Mar '26
-  [263, 264], // narrow – mid Mar '26
-  [278, 284], // wide   – early Apr '26
-  [295, 296], // narrow – mid Apr '26
-  [309, 315], // wide   – early May '26
-  [326, 327], // narrow – mid May '26
-  [338, 340], // narrow – late May '26
-  [350, 356], // wide   – mid Jun '26
-  [364, 364], // narrow – late Jun '26 (single day)
+  [22,  27],  // wide   – late Aug '25
+  [62,  63],  // narrow – early Oct '25
+  [105, 111], // wide   – early Nov '25
+  [148, 149], // narrow – mid Dec '25
+  [178, 184], // wide   – mid Jan '26
+  [222, 223], // narrow – early Feb '26
+  [258, 264], // wide   – mid Mar '26
+  [301, 302], // narrow – late Apr '26
+  [330, 336], // wide   – late May '26
+  [358, 359], // narrow – late Jun '26
 ];
 
 // Build a Set for O(1) lookup
@@ -463,16 +449,13 @@ function buildYearData() {
     });
   }
 
-  // Place failureDot=0 at the boundary points flanking each null run
-  const n = points.length;
-  let i = 0;
-  while (i < n) {
-    if (points[i].actual !== null) { i++; continue; }
-    let runEnd = i;
-    while (runEnd < n && points[runEnd].actual === null) runEnd++;
-    if (i > 0) points[i - 1].failureDot = 0;
-    if (runEnd < n) points[runEnd].failureDot = 0;
-    i = runEnd;
+  // Place failureDot=0 at random non-outage days scattered across the year.
+  // These are intentional annotation dots — not tied to gap boundaries.
+  const DOT_DAYS = [7, 15, 42, 58, 81, 97, 130, 155, 171, 205, 233, 250, 275, 310, 340, 362];
+  for (const day of DOT_DAYS) {
+    if (day < points.length && points[day].actual !== null) {
+      points[day].failureDot = 0;
+    }
   }
 
   return points;
@@ -686,7 +669,7 @@ function YearGraph({ zoomRange, onZoomChange }: {
     // Only render month-start ticks
     const point = visibleData.find(p => p.date === payload.value);
     if (!point) return <g />;
-    // Only show the first week of each month within the visible window
+    // Only show the first day of each month within the visible window
     const isMonthStart = visibleData.findIndex(p => p.monthLabel === point.monthLabel) ===
                          visibleData.findIndex(p => p.date === payload.value);
     if (!isMonthStart) return <g />;
@@ -703,27 +686,27 @@ function YearGraph({ zoomRange, onZoomChange }: {
     </text>
   );
 
-  // Compute contiguous anomaly regions for red vertical shading
+  // Derive outage regions directly from null actual values in the visible slice.
+  // This ensures red bands precisely match where the line breaks.
   type Region = { x1: string; x2: string };
-  const anomalyRegions: Region[] = [];
+  const outageRegions: Region[] = [];
   let regionStart: string | null = null;
-  let prevAnomalyMonth: string | null = null;
+  let regionLast: string | null = null;
   for (let i = 0; i < visibleData.length; i++) {
     const p = visibleData[i];
-    const isAnomaly = YEAR_ANOMALY_MONTHS.includes(p.monthLabel);
-    if (isAnomaly) {
+    if (p.actual === null) {
       if (regionStart === null) regionStart = p.date;
-      prevAnomalyMonth = p.date;
+      regionLast = p.date;
     } else {
-      if (regionStart !== null && prevAnomalyMonth !== null) {
-        anomalyRegions.push({ x1: regionStart, x2: prevAnomalyMonth });
+      if (regionStart !== null && regionLast !== null) {
+        outageRegions.push({ x1: regionStart, x2: regionLast });
         regionStart = null;
-        prevAnomalyMonth = null;
+        regionLast = null;
       }
     }
   }
-  if (regionStart !== null && prevAnomalyMonth !== null) {
-    anomalyRegions.push({ x1: regionStart, x2: prevAnomalyMonth });
+  if (regionStart !== null && regionLast !== null) {
+    outageRegions.push({ x1: regionStart, x2: regionLast });
   }
 
   return (
@@ -764,19 +747,7 @@ function YearGraph({ zoomRange, onZoomChange }: {
 
         <ReferenceLine y={0} stroke="#d1d5db" strokeWidth={1} />
 
-        {/* Red anomaly vertical bands */}
-        {anomalyRegions.map((r, i) => (
-          <ReferenceArea
-            key={`anomaly-${i}`}
-            x1={r.x1}
-            x2={r.x2}
-            fill="#fca5a5"
-            fillOpacity={0.25}
-            stroke="none"
-          />
-        ))}
-
-        {/* ±2 SD outer band — light blue fill */}
+        {/* ±2 SD outer band — light blue fill (behind lines) */}
         <Area name="band-outer-base" dataKey="bandOuterBase" stackId="yr-outer" stroke="none" fill="#ffffff" fillOpacity={0.6} legendType="none" isAnimationActive={false} />
         <Area name="band-outer-fill" dataKey="bandOuterHeight" stackId="yr-outer" stroke="none" fill="#dbeafe" fillOpacity={0.85} legendType="none" isAnimationActive={false} />
 
@@ -785,10 +756,10 @@ function YearGraph({ zoomRange, onZoomChange }: {
         {/* -2 SD lower boundary — green dashed */}
         <Line name="sd2-lower" dataKey="sd2Lower" stroke="#15803d" strokeWidth={1} strokeDasharray="5 3" dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="monotone" connectNulls />
 
-        {/* Expected — amber/gold solid */}
+        {/* Expected — yellow solid, always connected (no gaps) */}
         <Line name="expected" dataKey="expected" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="monotone" connectNulls />
 
-        {/* Actual — blue line, no dots, breaks cleanly at failure gaps */}
+        {/* Actual — blue line, breaks cleanly at each outage gap */}
         <Line
           dataKey="actual"
           stroke="#0056e1"
@@ -798,10 +769,10 @@ function YearGraph({ zoomRange, onZoomChange }: {
           type="monotone"
           connectNulls={false}
           dot={false}
-          activeDot={{ r: 4, fill: '#0056e1', stroke: '#ffffff', strokeWidth: 1.5 }}
+          activeDot={{ r: 4, fill: '#4b5563', stroke: '#ffffff', strokeWidth: 1.5 }}
         />
 
-        {/* Failure dots — rendered on top of bands */}
+        {/* Failure dots — boundary markers at gap edges */}
         <Line
           dataKey="failureDot"
           stroke="none"
@@ -829,6 +800,20 @@ function YearGraph({ zoomRange, onZoomChange }: {
             );
           }}
         />
+
+        {/* Outage bands — rendered LAST so they paint over all lines */}
+        {outageRegions.map((r, i) => (
+          <ReferenceArea
+            key={`outage-${i}`}
+            x1={r.x1}
+            x2={r.x2}
+            fill="#fca5a5"
+            fillOpacity={0.45}
+            stroke="#f87171"
+            strokeWidth={0.5}
+            strokeOpacity={0.6}
+          />
+        ))}
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -1089,9 +1074,9 @@ function ChartLegend({ showPattern }: { showPattern?: boolean }) {
         <LegendInfoIcon tip="Measured Getpages count at each time point" />
       </div>
 
-      {/* Expected value — amber/gold solid line */}
+      {/* Expected value — yellow solid line */}
       <div className="flex gap-[6px] items-center w-full">
-        <div className="bg-[#ffb900] h-[2px] shrink-0 w-[16px]" />
+        <div className="bg-[#f59e0b] h-[2px] shrink-0 w-[16px]" />
         <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[normal] text-[#525252] whitespace-nowrap">
           Expected value
         </span>
@@ -1478,8 +1463,8 @@ function GetpagesChart({ data, margin, showPattern, showOverlays = true, visual 
         {/* -2 SD lower boundary — green dashed */}
         {showSDBands && <Line name="sd2-lower" dataKey="sd2Lower" stroke="#15803d" strokeWidth={1} strokeDasharray="5 3" dot={false} legendType="none" isAnimationActive={false} type={lineType} />}
 
-        {/* Expected — Figma: amber/gold solid line */}
-        {showExpected && <Line name="expected" dataKey="expected" stroke="#f59e0b" strokeWidth={lineWidth} dot={false} legendType="none" isAnimationActive={false} type={lineType} />}
+        {/* Expected — yellow solid, always connected (no gaps) */}
+        {showExpected && <Line name="expected" dataKey="expected" stroke="#f59e0b" strokeWidth={lineWidth} dot={false} legendType="none" isAnimationActive={false} type={lineType} connectNulls />}
 
         {/* Moving average */}
         {showPattern && (
@@ -1496,7 +1481,7 @@ function GetpagesChart({ data, margin, showPattern, showOverlays = true, visual 
           isAnimationActive={false}
           type={lineType}
           connectNulls={false}
-          activeDot={{ r: 4, fill: '#0056e1', stroke: '#0056e1', strokeWidth: 0 }}
+          activeDot={{ r: 4, fill: '#4b5563', stroke: '#ffffff', strokeWidth: 1.5 }}
           dot={(props: any) => {
             const { cx, cy, payload } = props;
             if (payload.actual !== 0) return <g key={`dot-${payload.date}`} />;
@@ -2267,71 +2252,58 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
             };
 
             if (isCurrentYear) {
-              // ── Monthly grid derived from yearData ────────────────────────
-              // Aggregate weekly points by monthLabel; a month is an outage if
-              // any of its weeks had actual === null.
-              const monthOrder = [
-                "Aug '25", "Sep '25", "Oct '25", "Nov '25", "Dec '25",
-                "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26",
-                "Jun '26", "Jul '26", "Aug '26",
-              ];
-              type MonthRow = {
-                month: string;
+              // ── Daily grid — one row per day from yearData ────────────────
+              type DayRow = {
+                date: string;
+                monthLabel: string;
                 db1: number | null;
                 db2: number | null;
                 db3: number | null;
                 total: number | null;
                 outage: boolean;
-                allZero: boolean;
               };
-              const monthMap = new Map<string, { sum: number; hasNull: boolean; allZero: boolean }>();
-              for (const p of yearData) {
-                const key = p.monthLabel;
-                const prev = monthMap.get(key) ?? { sum: 0, hasNull: false, allZero: true };
-                if (p.actual === null) {
-                  monthMap.set(key, { ...prev, hasNull: true, allZero: false });
-                } else {
-                  monthMap.set(key, {
-                    sum: prev.sum + p.actual,
-                    hasNull: prev.hasNull,
-                    allZero: prev.allZero && p.actual === 0,
-                  });
+              const dayRows: DayRow[] = yearData.map(p => {
+                const isOutage = p.actual === null;
+                if (isOutage) {
+                  return { date: p.date, monthLabel: p.monthLabel, db1: null, db2: null, db3: null, total: null, outage: true };
                 }
-              }
-              const monthRows: MonthRow[] = monthOrder.map(month => {
-                const agg = monthMap.get(month);
-                if (!agg) return { month, db1: null, db2: null, db3: null, total: null, outage: true, allZero: false };
-                if (agg.hasNull) return { month, db1: null, db2: null, db3: null, total: null, outage: true, allZero: false };
-                const total = agg.sum;
-                if (agg.allZero) return { month, db1: 0, db2: 0, db3: 0, total: 0, outage: false, allZero: true };
-                // Split total into per-DB proportions matching Figma (DB1≈35.5%, DB2≈39.5%, DB3≈25%)
+                const total = p.actual!;
                 const db1 = Math.round(total * 0.355);
                 const db2 = Math.round(total * 0.395);
                 const db3 = total - db1 - db2;
-                return { month, db1, db2, db3, total, outage: false, allZero: false };
+                return { date: p.date, monthLabel: p.monthLabel, db1, db2, db3, total, outage: false };
               });
+
+              // Group into months for the sticky month label column
+              let lastMonth = '';
 
               return (
                 <div className="overflow-auto p-[20px]">
-                  <table className="border-collapse" style={{ fontSize: 14, color: '#0a0a0a', fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                  <table className="border-collapse" style={{ fontSize: 13, color: '#0a0a0a', fontFamily: "'IBM Plex Sans', sans-serif" }}>
                     <thead>
                       <tr style={{ backgroundColor: '#f3f4f6', height: 37 }}>
-                        <th style={{ ...thStyle, textAlign: 'left', width: 117 }}>Month</th>
-                        <th style={{ ...thStyle, textAlign: 'left', width: 113 }}>Quality</th>
-                        <th style={{ ...thStyle, textAlign: 'right', width: 226 }}>DB0H01 Getpages</th>
-                        <th style={{ ...thStyle, textAlign: 'right', width: 226 }}>DB0H02 Getpages</th>
-                        <th style={{ ...thStyle, textAlign: 'right', width: 226 }}>DB0H03 Getpages</th>
-                        <th style={{ ...thStyle, textAlign: 'right', width: 192 }}>Total Getpages</th>
+                        <th style={{ ...thStyle, textAlign: 'left', width: 100 }}>Month</th>
+                        <th style={{ ...thStyle, textAlign: 'left', width: 130 }}>Date</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 210 }}>DB0H01 Getpages</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 210 }}>DB0H02 Getpages</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 210 }}>DB0H03 Getpages</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 180 }}>Total Getpages</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {monthRows.map((row, i) => {
+                      {dayRows.map((row, i) => {
                         const isOutage = row.outage;
                         const rowBg = isOutage ? '#fef2f2' : (i % 2 === 1 ? '#f9fafb' : '#ffffff');
+                        const showMonth = row.monthLabel !== lastMonth;
+                        if (showMonth) lastMonth = row.monthLabel;
                         return (
-                          <tr key={row.month} style={{ height: 33, backgroundColor: rowBg }}>
-                            <td style={{ ...baseCellStyle, fontWeight: 500 }}>{row.month}</td>
-                            <td style={{ ...baseCellStyle }} />
+                          <tr key={row.date} style={{ height: 30, backgroundColor: rowBg }}>
+                            <td style={{ ...baseCellStyle, fontWeight: 600, color: showMonth ? '#0a0a0a' : 'transparent', fontSize: 12 }}>
+                              {row.monthLabel}
+                            </td>
+                            <td style={{ ...baseCellStyle, color: isOutage ? '#da1e28' : '#374151', fontWeight: isOutage ? 600 : 400 }}>
+                              {isOutage ? <span>⚠ {row.date}</span> : row.date}
+                            </td>
                             <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db1, isOutage)}</td>
                             <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db2, isOutage)}</td>
                             <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db3, isOutage)}</td>
