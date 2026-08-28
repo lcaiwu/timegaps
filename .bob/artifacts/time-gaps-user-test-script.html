@@ -6,637 +6,447 @@
 <title>Time Gaps — User Test Script</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   body {
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
     font-size: 14px;
-    line-height: 1.7;
+    line-height: 1.65;
     color: #1f2328;
     background: #ffffff;
     padding: 40px 20px 60px;
   }
+  .page { max-width: 760px; margin: 0 auto; }
 
-  .container {
-    max-width: 760px;
-    margin: 0 auto;
-  }
-
-  /* Header */
   .doc-header {
-    border-bottom: 2px solid #e5e7eb;
-    padding-bottom: 20px;
-    margin-bottom: 32px;
+    border-bottom: 2px solid #1f2328;
+    padding-bottom: 16px;
+    margin-bottom: 28px;
   }
-  .doc-header h1 {
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: -0.3px;
-    color: #1f2328;
-    margin-bottom: 8px;
-  }
-  .meta-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 18px;
-    font-size: 12.5px;
-    color: #57606a;
-  }
-  .meta-row span strong {
-    color: #1f2328;
-  }
-  .prototype-link {
-    display: inline-block;
-    margin-top: 10px;
-    padding: 5px 12px;
-    background: #f0f4ff;
-    border: 1px solid #c9d5f5;
-    border-radius: 4px;
-    font-size: 12.5px;
-    color: #3b5bdb;
-    font-style: italic;
-  }
+  .doc-header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 6px; }
+  .doc-meta { display: flex; gap: 20px; flex-wrap: wrap; }
+  .doc-meta span { font-size: 12px; color: #57606a; }
+  .doc-meta strong { color: #1f2328; }
 
-  /* Section headings */
   h2 {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
-    color: #1f2328;
-    margin-top: 36px;
-    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #57606a;
+    margin: 36px 0 12px;
     padding-bottom: 5px;
     border-bottom: 1px solid #e5e7eb;
   }
-  h3 {
-    font-size: 13.5px;
-    font-weight: 600;
-    color: #1f2328;
-    margin-top: 18px;
-    margin-bottom: 6px;
-  }
-
-  /* Background section */
-  .bg-section p {
-    margin-bottom: 10px;
-    color: #1f2328;
-  }
-  .gap-types {
-    list-style: none;
-    padding: 0;
-    margin: 12px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .gap-types li {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    padding: 10px 14px;
-    border-radius: 5px;
-    font-size: 13.5px;
-  }
-  .gap-types li.filtered  { background: #fff7ed; border-left: 3px solid #f97316; }
-  .gap-types li.missing   { background: #fef2f2; border-left: 3px solid #ef4444; }
-  .gap-types li.zero      { background: #f0fdf4; border-left: 3px solid #22c55e; }
-  .gap-types li .tag {
-    font-weight: 700;
-    white-space: nowrap;
-    min-width: 110px;
-    font-size: 12.5px;
-  }
-  .gap-types li.filtered .tag { color: #c2410c; }
-  .gap-types li.missing  .tag { color: #b91c1c; }
-  .gap-types li.zero     .tag { color: #15803d; }
-
-  /* Participants */
-  .participant-list {
-    list-style: none;
-    padding: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 8px;
-  }
-  .participant-list li {
-    padding: 4px 12px;
-    background: #f7f8fa;
-    border: 1px solid #e5e7eb;
-    border-radius: 20px;
-    font-size: 12.5px;
-    color: #1f2328;
-  }
-
-  /* Facilitator note */
-  .facilitator-note {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-left: 4px solid #f59e0b;
-    border-radius: 5px;
-    padding: 12px 16px;
-    font-size: 13px;
-    color: #78350f;
-    margin-top: 8px;
-  }
-  .facilitator-note strong { color: #92400e; }
-
-  /* Session table */
-  .session-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-    font-size: 13px;
-  }
-  .session-table th {
-    background: #f7f8fa;
-    text-align: left;
-    padding: 8px 12px;
-    border: 1px solid #e5e7eb;
-    font-weight: 600;
-    color: #57606a;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .session-table td {
-    padding: 9px 12px;
-    border: 1px solid #e5e7eb;
-    vertical-align: top;
-  }
-  .session-table tr:hover td { background: #fafafa; }
-  .task-num {
-    font-weight: 700;
-    color: #3b82d4;
-    width: 32px;
-  }
 
   /* Task cards */
-  .task-card {
-    border: 1px solid #e5e7eb;
-    border-radius: 7px;
-    overflow: hidden;
-    margin-top: 20px;
+  .task-card { border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 24px; overflow: hidden; }
+  .task-header {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 12px 16px; background: #f7f8fa; border-bottom: 1px solid #e5e7eb;
   }
-  .task-card-header {
-    background: #f7f8fa;
-    padding: 12px 18px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border-bottom: 1px solid #e5e7eb;
+  .task-number { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #57606a; flex-shrink: 0; }
+  .task-title { font-size: 15px; font-weight: 700; color: #1f2328; }
+  .task-focus { font-size: 12px; color: #57606a; margin-left: auto; flex-shrink: 0; }
+  .task-body { padding: 16px; }
+
+  .sub-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: #57606a; margin: 14px 0 5px;
   }
-  .task-badge {
-    font-size: 11px;
-    font-weight: 700;
-    padding: 3px 9px;
-    border-radius: 12px;
-    background: #3b82d4;
-    color: #fff;
-    white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .sub-label:first-child { margin-top: 0; }
+
+  /* Prototype state box */
+  .proto-box {
+    background: #f0f6ff; border: 1px solid #b6d0f7;
+    border-radius: 4px; padding: 10px 12px; font-size: 13px; margin-bottom: 4px;
   }
-  .task-card-header h3 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 700;
-    color: #1f2328;
-  }
-  .task-goal {
-    font-size: 12.5px;
-    color: #57606a;
-    margin-top: 2px;
-  }
-  .task-card-body {
-    padding: 16px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+  .proto-box ul { padding-left: 16px; }
+  .proto-box li { margin-bottom: 3px; }
+  .proto-box ol { padding-left: 18px; }
+  .proto-box ol li { margin-bottom: 5px; }
+
+  /* Scenario quote */
+  .scenario {
+    background: #f7f8fa; border-left: 3px solid #3b82d4;
+    border-radius: 0 4px 4px 0; padding: 9px 12px;
+    font-style: italic; color: #1f2328; margin: 4px 0;
   }
 
-  /* Scene block */
-  .scene-block {
-    background: #f0f7ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 5px;
-    padding: 11px 14px;
+  ul, ol { padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  .observe-list li { color: #364153; }
+  .followup-list { list-style: none; padding-left: 0; }
+  .followup-list li {
+    padding: 5px 10px; border-radius: 4px; margin-bottom: 3px;
+    background: #f9fafb; border: 1px solid #e5e7eb;
+    font-style: italic; color: #1f2328; font-size: 13.5px;
   }
-  .scene-block .label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: #3b82d4;
-    margin-bottom: 5px;
+  .followup-list li::before { content: "→ "; color: #3b82d4; font-style: normal; }
+
+  /* Special callouts */
+  .callout {
+    background: #fff7ed; border: 1px solid #fed7aa;
+    border-radius: 4px; padding: 9px 12px; font-size: 13px; color: #431407; margin-bottom: 12px;
   }
-  .scene-block p {
-    font-size: 13.5px;
-    font-style: italic;
-    color: #1e3a5f;
-    margin: 0;
+  .callout strong { color: #9a3412; }
+
+  .hover-note {
+    background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 4px; padding: 7px 11px; font-size: 12.5px; color: #78350f; margin: 8px 0;
   }
 
-  /* Pre-task block */
-  .pretask-block {
-    background: #fdf4ff;
-    border: 1px solid #e9d5ff;
-    border-radius: 5px;
-    padding: 11px 14px;
+  /* Checklist */
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 5px; font-size: 13.5px; }
+  .checklist li::before { content: "☐"; font-size: 14px; flex-shrink: 0; margin-top: 1px; color: #57606a; }
+
+  /* Session table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 4px; }
+  th {
+    background: #f7f8fa; text-align: left; padding: 7px 10px;
+    font-weight: 700; border: 1px solid #e5e7eb; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.05em; color: #57606a;
   }
-  .pretask-block .label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: #7c5cd8;
-    margin-bottom: 5px;
+  td { padding: 7px 10px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fa; }
+
+  /* Gap type swatches */
+  .gap-legend { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+  .gap-row { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; }
+  .gap-swatch { flex-shrink: 0; width: 22px; height: 14px; border-radius: 2px; margin-top: 1px; }
+  .swatch-hatch {
+    background: repeating-linear-gradient(45deg,#ea580c33 0px,#ea580c33 2px,transparent 2px,transparent 6px);
+    border: 1px solid #ea580c99;
   }
-  .pretask-block p {
-    font-size: 13.5px;
-    font-style: italic;
-    color: #3b0764;
-    margin: 0;
+  .swatch-break { background: white; border: 1px dashed #9ca3af; }
+  .swatch-zero {
+    background: white; border: 2px solid #e7000b; border-radius: 50%;
+    width: 14px; height: 14px;
   }
 
-  /* Observe block */
-  .observe-block .label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: #57606a;
-    margin-bottom: 6px;
-  }
-  .observe-block ul {
-    padding-left: 18px;
-    color: #1f2328;
-    font-size: 13.5px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  /* Questions block */
-  .questions-block .label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: #57606a;
-    margin-bottom: 6px;
-  }
-  .questions-block ol {
-    padding-left: 18px;
-    font-size: 13.5px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    color: #1f2328;
-  }
-  .questions-block ol li {
-    font-style: italic;
-  }
-
-  /* Show pill */
-  .show-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    background: #f7f8fa;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
-    padding: 4px 10px;
-    color: #57606a;
-  }
-  .show-pill::before {
-    content: "▶";
-    font-size: 9px;
-    color: #3b82d4;
-  }
+  /* Participants */
+  .participant-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .participant-tag { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 3px 9px; font-size: 12.5px; color: #374151; }
+  .participant-tag.internal { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
 
   /* Closing */
-  .closing-block {
-    background: #f7f8fa;
-    border: 1px solid #e5e7eb;
-    border-radius: 7px;
-    padding: 16px 18px;
-    margin-top: 20px;
+  .closing-list { list-style: none; padding-left: 0; }
+  .closing-list li {
+    font-style: italic; color: #1f2328; margin-bottom: 6px;
+    border-bottom: 1px dotted #e5e7eb; padding-bottom: 5px;
   }
-  .closing-block .label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: #57606a;
-    margin-bottom: 8px;
-  }
-  .closing-block ol {
-    padding-left: 18px;
-    font-size: 13.5px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    color: #1f2328;
-  }
-  .closing-block ol li { font-style: italic; }
+  .closing-list li::before { content: "→ "; color: #3b82d4; font-style: normal; }
 
   /* Synthesis */
-  .synthesis-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-top: 12px;
-  }
-  .synthesis-card {
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 13px 15px;
-    background: #fafafa;
-  }
-  .synthesis-card h4 {
-    font-size: 12.5px;
-    font-weight: 700;
-    color: #1f2328;
-    margin-bottom: 5px;
-  }
-  .synthesis-card p {
-    font-size: 12.5px;
-    color: #57606a;
-    line-height: 1.6;
-  }
+  .synthesis-block { background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 5px; padding: 12px 14px; margin-bottom: 10px; }
+  .synthesis-block .syn-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #1f2328; }
+  .synthesis-block p { font-size: 13px; color: #57606a; margin: 0; }
 
-  hr { border: none; border-top: 1px solid #e5e7eb; margin: 32px 0; }
+  /* Context box */
+  .context-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 10px 13px; font-size: 13px; margin-bottom: 8px; }
+  .context-box strong { color: #166534; }
 
-  .footer {
-    text-align: center;
-    font-size: 12px;
-    color: #8b949e;
-    border-top: 1px solid #e5e7eb;
-    padding-top: 20px;
-    margin-top: 48px;
-  }
+  footer { text-align: center; font-size: 11px; color: #8c959f; margin-top: 48px; padding-top: 14px; border-top: 1px solid #e5e7eb; }
 </style>
 </head>
 <body>
-<div class="container">
+<div class="page">
 
   
   <div class="doc-header">
     <h1>Time Gaps — User Test Script</h1>
-    <div class="meta-row">
+    <div class="doc-meta">
       <span><strong>Feature:</strong> Time Gaps (IntelliMagic)</span>
-      <span><strong>Version:</strong> Revised 8/13</span>
+      <span><strong>Prototype:</strong> Live React prototype — open in browser before session</span>
+      <span><strong>Version:</strong> Revised 8/13 · Grounded in Getpages prototype</span>
     </div>
-    <div class="prototype-link">🔗 Prototype Link: [INSERT HERE — Show: Prototype under extreme use case]</div>
   </div>
 
   
-  <h2>Background</h2>
-  <div class="bg-section">
-    <p>Time Gaps is a feature in IntelliMagic (INTM). The chart currently renders three distinct data states as identical blank spaces, giving users no way to differentiate between them:</p>
-    <ul class="gap-types">
-      <li class="filtered"><span class="tag">Filtered Data</span><span>The user intentionally applied filters, excluding specific time or date periods.</span></li>
-      <li class="missing"><span class="tag">Missing Data</span><span>A system failure or ingestion error occurred — data was never recorded.</span></li>
-      <li class="zero"><span class="tag">Zero Value</span><span>The system was running, but the metric happened to be zero.</span></li>
-    </ul>
-    <p><strong>Problem Statement:</strong> Because these three states look identical, users cannot determine which situation they are viewing — creating clarity and trust problems.</p>
-    <p style="margin-top:8px"><strong>Test Objectives:</strong> Understand how users interpret the current Time Gaps design for both the graph visual and the text summary filter. Identify what needs to be prioritized, opportunities for improvement, and unmet needs within the prototypes.</p>
+  <h2>What the Prototype Shows</h2>
+  <div class="context-box">
+    <p style="margin-bottom:6px">The prototype is a single report called <strong>"Getpages Change Over Time" for Db2 Data Sharing Group DB2H</strong>. It lives inside IBM Z IntelliMagic Vision for z/OS under <em>Db2 → Statistics → DB Statistics</em>.</p>
+    <p style="margin-bottom:6px"><strong>What is Getpages?</strong> Getpages is a Db2 metric that counts how many database pages were read during a time interval. It's a core indicator of database workload — engineers watch it to understand how hard Db2 is working and to spot unusual dips or spikes.</p>
+    <p>The chart plots <strong>actual Getpages per day</strong> against a <strong>baseline (expected value)</strong> and <strong>±2 standard deviation bands</strong>. When the red actual line falls outside the yellow SD bands, that signals something unusual in Db2 activity — either unexpectedly high or low page reads.</p>
+  </div>
+  <p style="font-size:13px;margin-bottom:6px">The problem under test: the chart has <strong>blank/flat areas</strong> that can mean three completely different things, and they all look the same:</p>
+  <div class="gap-legend" style="margin:8px 0 4px">
+    <div class="gap-row"><div class="gap-swatch swatch-hatch"></div><div><strong>Filtered</strong> — the user's selection excluded these days (e.g. specific time windows were filtered out). Data exists but was intentionally removed from view.</div></div>
+    <div class="gap-row"><div class="gap-swatch swatch-break"></div><div><strong>System outage / missing data</strong> — the Db2 telemetry collector was down. No data was ever recorded. The line simply breaks.</div></div>
+    <div class="gap-row"><div class="gap-swatch swatch-zero"></div><div><strong>Zero value</strong> — the collector was running but Getpages was literally zero. The system may have been idle or a specific subsystem stopped processing reads. Shown as a hollow circle on the x-axis.</div></div>
   </div>
 
   
-  <h2>Target Participants</h2>
-  <ul class="participant-list">
-    <li>IT Engineers</li>
-    <li>Analysts</li>
-    <li>System Engineers</li>
-    <li>Todd (Internal)</li>
-    <li>Jean Marc (Internal)</li>
+  <h2>Background &amp; Objectives</h2>
+  <p style="margin-bottom:8px"><strong>Problem:</strong> Because these three states look the same on the chart, users can't tell whether a blank period means "I filtered that out," "the system was down," or "Db2 really processed zero pages." This creates confusion and erodes trust in the data.</p>
+  <p><strong>Test Objectives:</strong> Understand how users interpret the Time Gaps design on the Getpages chart and the Selection summary. Identify what to prioritize, what to improve, and what unmet needs exist.</p>
+
+  
+  <h2>Prototype Setup — Facilitator Checklist</h2>
+  <div class="callout"><strong>Complete before the participant joins.</strong></div>
+  <ul class="checklist">
+    <li>Open the prototype in Chrome or Firefox at full-screen width (≥ 1280 px).</li>
+    <li>Log in: click any button on the login screen to enter the dashboard.</li>
+    <li>The app opens to the <strong>Getpages Change Over Time</strong> report for DB2H.</li>
+    <li>The <strong>Selection card</strong> (blue box, top-right of report header) should read: <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:12px">08/26/2026 · IGT, All sysplexes · Hourly · Thu</code></li>
+    <li>The <strong>Chart tab</strong> is active (not Grid) and the legend is visible on the right.</li>
+    <li>The <strong>Edit panel</strong> drawer is closed.</li>
+    <li><strong>Task 4 only:</strong> before that task, open Edit panel → Data gaps → Zeros = Show, Outage = Show shading → drag Time window sliders to full 13-month range.</li>
   </ul>
 
   
+  <h2>Target Participants</h2>
+  <div class="participant-grid">
+    <span class="participant-tag">IT Engineers</span>
+    <span class="participant-tag">Analysts</span>
+    <span class="participant-tag">System Engineers</span>
+    <span class="participant-tag internal">Todd (Internal)</span>
+    <span class="participant-tag internal">Jean Marc (Internal)</span>
+  </div>
+
+  
   <h2>Facilitator Notes</h2>
-  <div class="facilitator-note">
-    <strong>Before you begin:</strong> Do not prime participants with what the design solves or what to look for. Let them interpret freely. Reserve directed tasks for after initial comprehension. Avoid closed-ended questions throughout — lean toward open-ended, exploratory prompts. If a participant goes deep on something interesting, follow that thread before moving on.
+  <div class="callout">
+    <strong>Before you begin:</strong> Do not tell participants this is about "time gaps" or explain what the blank areas mean. Let them interpret freely. Use open-ended prompts. If a participant goes somewhere interesting, follow that thread before moving on.
   </div>
 
   
   <h2>Session Structure</h2>
-  <table class="session-table">
+  <table>
     <thead>
-      <tr>
-        <th>#</th>
-        <th>Task</th>
-        <th>Focus</th>
-      </tr>
+      <tr><th>#</th><th>Task</th><th>Prototype State</th><th>Focus</th></tr>
     </thead>
     <tbody>
-      <tr><td class="task-num">1</td><td>Overall UI Comprehension</td><td>First impressions, mental model</td></tr>
-      <tr><td class="task-num">2</td><td>Identify Time Gaps in Graph</td><td>Gap recognition + interpretation</td></tr>
-      <tr><td class="task-num">3</td><td>Text Summary Comprehension</td><td>Readability + clarity of exclusions</td></tr>
-      <tr><td class="task-num">4</td><td>Extreme Use Case</td><td>Design stress test + scalability</td></tr>
+      <tr><td style="font-weight:700">1</td><td>Overall UI Comprehension</td><td>Default view — Getpages report, chart tab, no edits</td><td>First impressions, mental model</td></tr>
+      <tr><td style="font-weight:700">2</td><td>Identify Time Gaps in Chart</td><td>Same screen — direct attention to the chart</td><td>Gap recognition + interpretation</td></tr>
+      <tr><td style="font-weight:700">3</td><td>Selection Summary Comprehension</td><td>Blue Selection card + Description block (top of report)</td><td>Readability + clarity of what was filtered</td></tr>
+      <tr><td style="font-weight:700">4</td><td>Extreme Use Case</td><td>Edit panel open, full 13-month window showing dense gaps</td><td>Design stress test at scale</td></tr>
     </tbody>
   </table>
 
-  <hr />
+  
+  <h2>Tasks</h2>
 
   
   <div class="task-card">
-    <div class="task-card-header">
-      <span class="task-badge">Task 1</span>
-      <div>
-        <h3>Overall UI Comprehension</h3>
-        <div class="task-goal">Goal: Understand first impressions and mental model before directing toward any specific feature.</div>
-      </div>
+    <div class="task-header">
+      <span class="task-number">Task 1</span>
+      <span class="task-title">Overall UI Comprehension</span>
+      <span class="task-focus">First impressions · mental model</span>
     </div>
-    <div class="task-card-body">
-      <div class="scene-block">
-        <div class="label">Setting the Scene</div>
-        <p>"I'm going to show you a screen. Take as much time as you need. Just tell me what you see — what this screen is for, what stands out, and what you would do first if this were your own work environment."</p>
-      </div>
-      <div><span class="show-pill">Show: Prototype screen</span></div>
-      <div class="observe-block">
-        <div class="label">Observe (do not prompt)</div>
+    <div class="task-body">
+      <div class="sub-label">Goal</div>
+      <p style="margin-bottom:10px">Understand the participant's first impressions of the Getpages report screen and their mental model of what it's for — before directing them to any specific element.</p>
+
+      <div class="sub-label">What's on Screen</div>
+      <div class="proto-box">
         <ul>
-          <li>What do they look at first?</li>
-          <li>What do they ignore or skip?</li>
-          <li>What language do they use to describe what they see?</li>
-          <li>Do they notice the gaps without being directed?</li>
+          <li><strong>Top nav:</strong> "IBM Z IntelliMagic Vision for z/OS" — Dashboard / Edit Dashboard / Create Report / Selection / Filter / Export</li>
+          <li><strong>Left sidebar:</strong> Navigation tree expanded to <em>CF and XCF → XCF → Usage by System</em> (highlighted in blue)</li>
+          <li><strong>Thumbnail strip:</strong> 10 small chart previews of the report set — MAXMSG highlighted in red</li>
+          <li><strong>Breadcrumb:</strong> Db2 → Statistics → DB Statistics → Getpages Change Over Time</li>
+          <li><strong>Report header:</strong> Title "Getpages Change Over Time / for DB2 Data Sharing Group DB2H", a Description block with a red warning icon, and the blue Selection card</li>
+          <li><strong>Chart:</strong> Red actual Getpages line, amber expected line, ±2 SD shaded bands, hatched orange regions (filtered), line breaks (outages), hollow red circles (zeros)</li>
+          <li><strong>Legend (right):</strong> Actual value, Expected value, +2 STD, -2 STD, ±2 STD, Null, System failure</li>
         </ul>
       </div>
-      <div class="questions-block">
-        <div class="label">Follow-up Questions</div>
-        <ol>
-          <li>"Walk me through what you think this screen is for."</li>
-          <li>"If you were using this in your day-to-day, what would you want to see here by default — and what could be hidden or optional?"</li>
-          <li>"What's the most important piece of information on this screen to you?"</li>
-          <li>"Are there any filter attributes you'd always want visible? What about ones you'd want tucked away?"</li>
-          <li>"What feels like it belongs here, and what feels like it might be extra?"</li>
-        </ol>
-      </div>
+
+      <div class="sub-label">Setting the Scene</div>
+      <div class="scenario">"I'm going to show you a screen. Take as much time as you need — just tell me what you see, what you think it's for, and what you would do first if this were your own environment."</div>
+
+      <div class="sub-label">Observe (do not prompt)</div>
+      <ul class="observe-list">
+        <li>Where do they look first — the chart, the sidebar, the header?</li>
+        <li>Do they notice the blank/gap areas without being directed?</li>
+        <li>What words do they use — "missing data," "filtered," "errors," something else?</li>
+        <li>What do they ignore entirely?</li>
+      </ul>
+
+      <div class="sub-label">Follow-up Questions</div>
+      <ul class="followup-list">
+        <li>"Walk me through what you think this screen is for."</li>
+        <li>"What's the most important piece of information on this screen to you?"</li>
+        <li>"If you were using this in your day-to-day, what would you want visible by default — and what could be hidden or optional?"</li>
+        <li>"Are there any filter details you'd always want to see? What about ones you'd tuck away?"</li>
+        <li>"What feels like it belongs here, and what feels like it might be extra?"</li>
+      </ul>
     </div>
   </div>
 
   
   <div class="task-card">
-    <div class="task-card-header">
-      <span class="task-badge">Task 2</span>
-      <div>
-        <h3>Identify Time Gaps in the Graph</h3>
-        <div class="task-goal">Goal: Evaluate whether users can spot gaps, correctly interpret them, and how quickly this happens naturally.</div>
-      </div>
+    <div class="task-header">
+      <span class="task-number">Task 2</span>
+      <span class="task-title">Identify Time Gaps in the Chart</span>
+      <span class="task-focus">Gap recognition · interpretation</span>
     </div>
-    <div class="task-card-body">
-      <div class="scene-block">
-        <div class="label">Setting the Scene</div>
-        <p>"You are reviewing a data validation report for anomaly evaluation covering the last quarter. Take a look at the graph and tell me what you notice."</p>
+    <div class="task-body">
+      <div class="sub-label">Goal</div>
+      <p style="margin-bottom:10px">Evaluate whether users can spot the different gap types in the Getpages chart, interpret what they mean, and how quickly and naturally this happens.</p>
+
+      <div class="sub-label">What's in the Chart</div>
+      <div class="proto-box">
+        <div class="gap-legend">
+          <div class="gap-row"><div class="gap-swatch swatch-hatch"></div><div><strong>Hatched orange bands</strong> — filtered periods. These days were excluded by the user's selection (e.g. specific time windows or days of week). Getpages data exists but isn't shown.</div></div>
+          <div class="gap-row"><div class="gap-swatch swatch-break"></div><div><strong>Line breaks, no shading</strong> — system outages. The Db2 telemetry collector was down; no Getpages data was collected. The line simply stops and restarts.</div></div>
+          <div class="gap-row"><div class="gap-swatch swatch-zero"></div><div><strong>Hollow red circles on the x-axis</strong> — zero values. Getpages was literally 0 that day. The collector ran, but no page reads were recorded.</div></div>
+        </div>
+        <p style="margin-top:8px;font-size:12.5px;color:#374151">Hovering shows a tooltip: <em>Expected value</em> / <em>Current</em> (shows "— (no data)" for outages, "0 Getpages" for zeros) / <em>±2 std dev range</em>.</p>
       </div>
-      <div><span class="show-pill">Show: Same prototype — do not direct their attention</span></div>
-      <div class="pretask-block">
-        <div class="label">Before They Interact — Ask First</div>
-        <p>"Before you click or do anything — what would you expect to happen if you hovered over or selected one of those blank areas?"</p>
-      </div>
-      <div class="observe-block">
-        <div class="label">Observe (do not prompt)</div>
-        <ul>
-          <li>Do they spot the gap unprompted?</li>
-          <li>How long does it take?</li>
-          <li>What do they describe or say out loud?</li>
-          <li>What actions do they take — hover, click, scroll?</li>
-          <li>Do they express confusion or uncertainty?</li>
-        </ul>
-      </div>
-      <div class="questions-block">
-        <div class="label">Follow-up Questions</div>
-        <ol>
-          <li>"What does that gap mean to you?"</li>
-          <li>"How does it compare to the rest of the chart?"</li>
-          <li>"Is there anything about it that surprises you — or anything you expected to see that isn't there?"</li>
-          <li>"What would you want to do next if you spotted this in your real work environment?"</li>
-          <li>"If there were multiple different kinds of gaps, how would you want to tell them apart?"</li>
-        </ol>
-      </div>
+
+      <div class="sub-label">Setting the Scene</div>
+      <div class="scenario">"You're reviewing the Getpages report for your Db2 system, checking activity over the last quarter. Take a look at the chart and tell me what you notice."</div>
+
+      <div class="sub-label">Before They Interact — Ask First</div>
+      <div class="scenario">"Before you click or hover anything — what would you expect to see if you selected one of those flat or blank areas?"</div>
+
+      <div class="sub-label">Observe (do not prompt)</div>
+      <ul class="observe-list">
+        <li>Do they spot the gaps without being directed?</li>
+        <li>How long does it take?</li>
+        <li>What do they say out loud — do they call it "missing data," "a gap," "filtered out," something else?</li>
+        <li>Do they hover, click, or try to scroll?</li>
+        <li>Do they look at the legend to make sense of it?</li>
+        <li>Do they notice the difference between the orange hatched areas vs. the plain line breaks?</li>
+      </ul>
+
+      <div class="hover-note">⚑ <strong>If they hover a gap:</strong> watch whether the tooltip text ("— (no data)" vs "0 Getpages") registers as meaningful or just noise. Note their reaction.</div>
+
+      <div class="sub-label">Follow-up Questions</div>
+      <ul class="followup-list">
+        <li>"What does that blank/gap area mean to you?"</li>
+        <li>"Does it feel different from the rest of the chart — or does it blend in?"</li>
+        <li>"Is there anything about it that surprises you, or that you expected to see that isn't there?"</li>
+        <li>"If you spotted this in your actual Db2 monitoring work, what would you do next?"</li>
+        <li>"If there were multiple different reasons a gap could appear — like a filter versus an outage versus the system going idle — how would you want to tell them apart visually?"</li>
+      </ul>
     </div>
   </div>
 
   
   <div class="task-card">
-    <div class="task-card-header">
-      <span class="task-badge">Task 3</span>
-      <div>
-        <h3>Text Summary Comprehension</h3>
-        <div class="task-goal">Goal: Understand how users read, scan, and interpret the text summary — specifically the exclusion detail section.</div>
-      </div>
+    <div class="task-header">
+      <span class="task-number">Task 3</span>
+      <span class="task-title">Selection Summary Comprehension</span>
+      <span class="task-focus">Readability · clarity of what was filtered</span>
     </div>
-    <div class="task-card-body">
-      <div class="scene-block">
-        <div class="label">Setting the Scene</div>
-        <p>"Now look at the text summary in the corner of the screen. Based on what's displayed, tell me what you understand about what was filtered and what exclusions happened."</p>
-      </div>
-      <div><span class="show-pill">Show: Point to text summary area — do not explain it</span></div>
-      <div class="pretask-block">
-        <div class="label">Before They Read — Ask First</div>
-        <p>"Before you read through it — what would you expect a text summary like this to tell you?"</p>
-      </div>
-      <div class="observe-block">
-        <div class="label">Observe (do not prompt)</div>
+    <div class="task-body">
+      <div class="sub-label">Goal</div>
+      <p style="margin-bottom:10px">Understand how users read and interpret the report's summary information — specifically the blue Selection card and the Description block — and whether it tells them what they need to know about what's included or excluded.</p>
+
+      <div class="sub-label">What's on Screen</div>
+      <div class="proto-box">
         <ul>
-          <li>Do they read the exclusion detail, or skip it?</li>
-          <li>Do they read top to bottom, or scan for specific items?</li>
-          <li>Where do they pause or re-read?</li>
-          <li>Any visible confusion — furrowed brow, re-reads, silence?</li>
+          <li><strong>Blue Selection card</strong> (top-right of report header): shows the active filters — date (<em>08/26/2026</em>), Interest Groups (<em>IGT, All sysplexes</em>), Interval (<em>Hourly</em>), Days (<em>Thu</em>). Clicking it opens the full Selection Panel.</li>
+          <li><strong>Description block</strong> (left of the blue card): red warning icon + text: <em>"Some telemetry data is missing due to a network maintenance outage. This report shows the Getpages metric… Values outside these ranges suggest unusual activity."</em></li>
+          <li><strong>If they click the blue card:</strong> the Selection Panel modal opens with four tabs — Time Range, Additional Filters, Comparisons, Saved Combinations. Let them explore freely.</li>
         </ul>
       </div>
-      <div class="questions-block">
-        <div class="label">Follow-up Questions</div>
-        <ol>
-          <li>"What does this tell you?"</li>
-          <li>"Is there anything here that feels unnecessary or that you'd remove?"</li>
-          <li>"Is there anything you expected to see that isn't here?"</li>
-          <li>"How would you describe this section to a colleague who hasn't seen it?"</li>
-          <li>"Is there anything that's harder to understand than it should be?"</li>
-        </ol>
-      </div>
+
+      <div class="sub-label">Setting the Scene</div>
+      <div class="scenario">"Now look at the summary area at the top of the report — the blue card and the text next to it. Based on what's shown, tell me what you understand about what's included in this chart and what might have been left out."</div>
+
+      <div class="sub-label">Before They Read — Ask First</div>
+      <div class="scenario">"Before you read it — what would you expect a summary like this to tell you about a Getpages report?"</div>
+
+      <div class="sub-label">Observe (do not prompt)</div>
+      <ul class="observe-list">
+        <li>Do they read the Description text or skip straight to the blue card?</li>
+        <li>Do they notice the red warning icon? Do they react to it?</li>
+        <li>Do they scan top to bottom, or jump to specific pieces?</li>
+        <li>Do they click the blue card to get more detail?</li>
+        <li>If they open the Selection Panel: which tab do they go to first? What are they looking for?</li>
+        <li>Any re-reads, pauses, or visible confusion?</li>
+      </ul>
+
+      <div class="sub-label">Follow-up Questions</div>
+      <ul class="followup-list">
+        <li>"What does this tell you about what's in this chart?"</li>
+        <li>"Does it tell you why certain parts of the chart are blank or missing?"</li>
+        <li>"Is there anything here that feels unnecessary — something you'd remove?"</li>
+        <li>"Is there anything you expected to see here that isn't?"</li>
+        <li>"How would you describe this summary to a colleague who hasn't seen this screen before?"</li>
+        <li>"Is there anything harder to understand than it should be?"</li>
+      </ul>
     </div>
   </div>
 
   
   <div class="task-card">
-    <div class="task-card-header">
-      <span class="task-badge">Task 4</span>
-      <div>
-        <h3>Extreme Use Case</h3>
-        <div class="task-goal">Goal: Stress-test the design under high-volume exclusions. Validate gap distinction and understand mental models at scale.</div>
-      </div>
+    <div class="task-header">
+      <span class="task-number">Task 4</span>
+      <span class="task-title">Extreme Use Case</span>
+      <span class="task-focus">Design stress test · scale</span>
     </div>
-    <div class="task-card-body">
-      <div class="scene-block">
-        <div class="label">Setting the Scene</div>
-        <p>"Now imagine you're reviewing data validation reports — but this time there are thousands of exclusions across the time range. For example: data excluded Monday through Friday from 9am–2pm and 4pm–8pm, every third Tuesday, and Wednesdays from 7pm to midnight. Take a look at what's on screen."</p>
-      </div>
-      <div><span class="show-pill">Show: Prototype — extreme use case view</span></div>
-      <div class="pretask-block">
-        <div class="label">Before They Look — Ask First</div>
-        <p>"Before you look at it — what would you expect this kind of scenario to look like on a chart? What's your mental image?"</p>
-      </div>
-      <div class="observe-block">
-        <div class="label">Observe (do not prompt)</div>
-        <ul>
-          <li>How do they react to the density of gaps?</li>
-          <li>What mental model do they apply — exclusions, missing data, or null values?</li>
-          <li>Do they feel overwhelmed, or do they orient themselves quickly?</li>
-          <li>What do they try to do — read, scan, zoom, filter?</li>
-        </ul>
-      </div>
-      <div class="questions-block">
-        <div class="label">Follow-up Questions</div>
+    <div class="task-body">
+      <div class="sub-label">Goal</div>
+      <p style="margin-bottom:10px">Stress-test the design when the Getpages chart is almost entirely covered in gaps. Validate whether gap types stay distinguishable at scale and understand users' mental models when nearly all data is affected.</p>
+
+      <div class="sub-label">Set Up Before This Task</div>
+      <div class="proto-box">
         <ol>
-          <li>"Walk me through what you're seeing."</li>
-          <li>"How would you typically handle something like this in your work?"</li>
-          <li>"Is there anything here that makes it harder to understand what's going on?"</li>
-          <li>"What would make this easier to work with at this scale?"</li>
-          <li>"If you had to explain the difference between the types of gaps to someone on your team, how would you do it based on what you see here?"</li>
+          <li>Click <strong>Edit report</strong> (blue button, top-right) to open the Edit panel drawer on the right.</li>
+          <li>Under <strong>Data gaps</strong>: set Zeros = <em>Show</em>, Outage = <em>Show shading</em>.</li>
+          <li>Under <strong>Time window</strong>: drag both sliders to show the full 13-month range (Aug '25 – Aug '26). The chart now shows dense clusters of orange hatched bands and line breaks spread across the whole time series — roughly 70% of days are affected.</li>
+          <li>Leave the drawer open so participants can see the gap summary counter at the bottom ("X of Y weeks have gaps").</li>
         </ol>
       </div>
+
+      <div class="sub-label">Setting the Scene</div>
+      <div class="scenario">"Now imagine you're reviewing Getpages for a Db2 system that had a lot of maintenance activity — heavy scheduled exclusions across the year, plus several collector outages. For example: Getpages data excluded Monday through Friday from 9am to 2pm and 4pm to 8pm, every third Tuesday, and Wednesdays from 7pm to midnight. Take a look at the chart."</div>
+
+      <div class="sub-label">Before They Look — Ask First</div>
+      <div class="scenario">"Before you look — if a Db2 report had that many exclusions and outages, what would you expect the Getpages chart to look like?"</div>
+
+      <div class="sub-label">Observe (do not prompt)</div>
+      <ul class="observe-list">
+        <li>What's their first reaction to the density of gaps across the chart?</li>
+        <li>Do they try to read the chart, or do they immediately feel it's unreadable?</li>
+        <li>Do they distinguish between the orange hatched areas (filtered) and the plain breaks (outages)?</li>
+        <li>Do they notice or use the Edit panel controls — the gap summary, the window slider, the zeros/outage toggles?</li>
+        <li>What language do they use — "excluded," "missing," "down," "filtered"?</li>
+      </ul>
+
+      <div class="sub-label">Follow-up Questions</div>
+      <ul class="followup-list">
+        <li>"Walk me through what you're seeing."</li>
+        <li>"How would you normally approach a Getpages chart that looked like this?"</li>
+        <li>"Is there anything here that makes it harder to understand what happened during those time periods?"</li>
+        <li>"What would make this easier to work with when there are this many gaps?"</li>
+        <li>"If you had to explain to someone on your team why some gaps are orange-hatched and others are plain breaks — what would you say, based on what you see here?"</li>
+      </ul>
     </div>
   </div>
 
   
   <h2>Closing Questions</h2>
-  <div class="closing-block">
-    <div class="label">Ask at the end of every session</div>
-    <ol>
-      <li>"Is there anything you noticed during the session that you haven't had a chance to mention?"</li>
-      <li>"If you could change one thing about what you saw today, what would it be?"</li>
-      <li>"What, if anything, would make you trust this data more?"</li>
-    </ol>
-  </div>
+  <p style="margin-bottom:8px;font-size:13px;color:#57606a">Ask at the end of every session regardless of how the tasks went.</p>
+  <ul class="closing-list">
+    <li>"Is there anything you noticed during the session that you didn't get a chance to mention?"</li>
+    <li>"If you could change one thing about what you saw today, what would it be?"</li>
+    <li>"What, if anything, would make you trust the Getpages data in this report more?"</li>
+  </ul>
 
   
   <h2>Post-Session Synthesis Guide</h2>
-  <p style="font-size:13px;color:#57606a;margin-bottom:4px">Use after all sessions are complete.</p>
-  <div class="synthesis-grid">
-    <div class="synthesis-card">
-      <h4>1. Pain Points &amp; Frustrations</h4>
-      <p>What moments caused confusion, hesitation, or negative reactions across participants?</p>
-    </div>
-    <div class="synthesis-card">
-      <h4>2. Unmet Needs</h4>
-      <p>What did participants expect to see or do that wasn't possible?</p>
-    </div>
-    <div class="synthesis-card">
-      <h4>3. Patterns Across Participants</h4>
-      <p>Where did multiple participants behave the same way, use the same language, or hit the same stumbling blocks?</p>
-    </div>
-    <div class="synthesis-card">
-      <h4>4. Design Direction</h4>
-      <p>What should be prioritized, iterated, or reconsidered? What questions remain open for another round of testing?</p>
-    </div>
+  <p style="margin-bottom:12px;font-size:13px;color:#57606a">Use after all sessions are complete.</p>
+  <div class="synthesis-block">
+    <div class="syn-title">1. Pain points and frustrations</div>
+    <p>What moments caused confusion, hesitation, or negative reactions — especially around the blank/gap areas on the Getpages chart?</p>
+  </div>
+  <div class="synthesis-block">
+    <div class="syn-title">2. Unmet needs</div>
+    <p>What did participants expect to see or do — for example, information they looked for in the Selection summary that wasn't there?</p>
+  </div>
+  <div class="synthesis-block">
+    <div class="syn-title">3. Patterns across participants</div>
+    <p>Where did multiple participants use the same language, make the same mistake, or behave the same way when encountering a gap?</p>
+  </div>
+  <div class="synthesis-block">
+    <div class="syn-title">4. Design direction</div>
+    <p>What should be prioritized, iterated, or reconsidered? What questions remain open for a follow-up round of testing?</p>
   </div>
 
-  <div class="footer">
-    Time Gaps User Test Script — Revised 8/13  ·  Made with IBM Bob
-  </div>
-
+  <footer>Made with IBM Bob</footer>
 </div>
 </body>
 </html>

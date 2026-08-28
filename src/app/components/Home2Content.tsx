@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { ChevronDown, BarChart3, Grid3X3, ChevronDownIcon, X, SlidersHorizontal, Eye, EyeOff, TrendingUp, Activity } from 'lucide-react';
 import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -125,15 +125,17 @@ function buildHourlyData() {
     });
   }
 
-  // Place one failureDot=0 at the midpoint of each null run
+  // Place failureDot=0 (x-axis) at the point just before and just after each null run
   const n = points.length;
   let i = 0;
   while (i < n) {
     if (points[i].actual !== null) { i++; continue; }
     let runEnd = i;
     while (runEnd < n && points[runEnd].actual === null) runEnd++;
-    const mid = Math.floor((i + runEnd - 1) / 2);
-    points[mid].failureDot = 0;
+    // point just before the gap
+    if (i > 0) points[i - 1].failureDot = 0;
+    // point just after the gap
+    if (runEnd < n) points[runEnd].failureDot = 0;
     i = runEnd;
   }
 
@@ -231,7 +233,9 @@ const fmtDefaultY = (v: number) => {
   return `${(v / 1_000).toFixed(0)}k`;
 };
 
-function DefaultGraph() {
+function DefaultGraph({ zoomRange }: { zoomRange: [number, number] }) {
+  const visibleData = hourlyData.slice(zoomRange[0], zoomRange[1] + 1);
+
   const xTick = ({ x, y, payload }: any) => {
     // Only render whole-hour ticks: "12:00 PM", "1:00 PM" … "7:00 PM"
     if (!payload.value.endsWith(':00 PM')) return <g />;
@@ -248,9 +252,11 @@ function DefaultGraph() {
     </text>
   );
 
+  const visibleOutageRegions = hourlyOutageRegions(visibleData);
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={hourlyData} margin={{ top: 10, right: 16, left: 48, bottom: 24 }}>
+      <ComposedChart data={visibleData} margin={{ top: 10, right: 16, left: 48, bottom: 24 }}>
         <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e5e7eb" strokeOpacity={0.8} />
 
         <XAxis
@@ -302,7 +308,7 @@ function DefaultGraph() {
         />
 
         {/* System failure bands */}
-        {outageRegions.map((r, i) => (
+        {visibleOutageRegions.map((r, i) => (
           <ReferenceArea
             key={`outage-${i}`}
             x1={r.x1}
@@ -320,7 +326,11 @@ function DefaultGraph() {
           legendType="none"
           isAnimationActive={false}
           connectNulls={false}
-          activeDot={false}
+          activeDot={(props: any) => {
+            const { cx, cy, payload } = props;
+            if (payload?.failureDot === null || cx == null || cy == null) return <g />;
+            return <circle cx={cx} cy={cy} r={5} fill="#0056e1" stroke="#ffffff" strokeWidth={1.5} />;
+          }}
           dot={(props: any) => {
             const { cx, cy, payload } = props;
             if (payload?.failureDot === null || cx == null || cy == null) return <g />;
@@ -370,6 +380,7 @@ function buildYearData() {
 
   type YearPoint = {
     date: string;
+    weekStart: string;        // ISO date of the Monday starting this week
     monthLabel: string;
     actual: number | null;    // null = system failure; line breaks here
     failureDot: number | null; // 0 at midpoint of each null run for x-axis dot
@@ -382,12 +393,19 @@ function buildYearData() {
 
   const points: YearPoint[] = [];
 
+  // Anchor: Aug 4 2025 is a Monday — week 0 of the dataset
+  const ANCHOR = new Date('2025-08-04');
+
   // Build weekly data points for each month (~4-5 weeks per month)
   let weekIndex = 0;
   for (const { label, monthIndex } of months) {
     const weeksInMonth = monthIndex === 1 ? 4 : 4; // ~4 weeks per month
     for (let w = 0; w < weeksInMonth; w++) {
       const t = (monthIndex + w / weeksInMonth) / 12;
+      // Compute the Monday of this week
+      const weekDate = new Date(ANCHOR);
+      weekDate.setDate(ANCHOR.getDate() + weekIndex * 7);
+      const weekStart = weekDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       // Expected rises in a gentle S-curve then levels off (matches Figma)
       const expectedCurve = YEAR_EXPECTED_BASE + Math.sin(t * Math.PI * 0.6) * 200_000 + t * 100_000;
       const expected = Math.round(expectedCurve);
@@ -413,6 +431,7 @@ function buildYearData() {
 
       points.push({
         date: `${label} W${w + 1}`,
+        weekStart,
         monthLabel: label,
         actual,
         failureDot: null, // filled in below
@@ -426,15 +445,17 @@ function buildYearData() {
     }
   }
 
-  // Place one failureDot=0 at the midpoint of each null run
+  // Place failureDot=0 (x-axis) at the point just before and just after each null run
   const n = points.length;
   let i = 0;
   while (i < n) {
     if (points[i].actual !== null) { i++; continue; }
     let runEnd = i;
     while (runEnd < n && points[runEnd].actual === null) runEnd++;
-    const mid = Math.floor((i + runEnd - 1) / 2);
-    points[mid].failureDot = 0;
+    // point just before the gap
+    if (i > 0) points[i - 1].failureDot = 0;
+    // point just after the gap
+    if (runEnd < n) points[runEnd].failureDot = 0;
     i = runEnd;
   }
 
@@ -475,8 +496,10 @@ function YearTooltip({ active, payload }: { active?: boolean; payload?: any[] })
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, fontWeight: 500, color: '#000000' }}>
-        <span>{d.monthLabel}</span>
-        <span>{d.date.split(' W')[1] ? `Week ${d.date.split(' W')[1]}` : ''}</span>
+        <span>{d.weekStart ?? d.monthLabel}</span>
+        <span style={{ color: '#6b7280', fontWeight: 400, fontSize: 11 }}>
+          {d.date.split(' W')[1] ? `Week ${d.date.split(' W')[1]}` : ''}
+        </span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
         <span style={{ color: '#000000' }}>Current</span>
@@ -500,14 +523,153 @@ const fmtYearY = (v: number) => {
   return `${(v / 1_000).toFixed(0)}k`;
 };
 
-function YearGraph() {
+// ─── Zoom/pan bar ─────────────────────────────────────────────────────────────
+// Generic — works for both hourlyData and yearData via a normalised ZoomItem shape
+interface ZoomItem {
+  label: string;       // displayed at ends of the axis
+  value: number;       // bar height
+  isOutage: boolean;   // colour outage bars pink
+}
+
+function ZoomBar({
+  items,
+  zoomRange,
+  onZoomChange,
+}: {
+  items: ZoomItem[];
+  zoomRange: [number, number];
+  onZoomChange: (r: [number, number]) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{
+    type: 'left' | 'right' | 'pan';
+    startX: number;
+    startRange: [number, number];
+  } | null>(null);
+
+  const n = items.length;
+  const [si, ei] = zoomRange;
+  const lPct = (si / (n - 1)) * 100;
+  const rPct = (ei / (n - 1)) * 100;
+
+  const maxVal = Math.max(1, ...items.map(d => d.value));
+
+  const startDrag = useCallback(
+    (type: 'left' | 'right' | 'pan') => (ev: React.MouseEvent) => {
+      ev.preventDefault();
+      dragState.current = { type, startX: ev.clientX, startRange: [si, ei] };
+    },
+    [si, ei],
+  );
+
+  useEffect(() => {
+    const onMove = (ev: MouseEvent) => {
+      const ds = dragState.current;
+      if (!ds || !containerRef.current) return;
+      const w = containerRef.current.getBoundingClientRect().width;
+      const dIdx = Math.round(((ev.clientX - ds.startX) / w) * (n - 1));
+      const [os, oe] = ds.startRange;
+      if (ds.type === 'left') {
+        onZoomChange([Math.max(0, Math.min(os + dIdx, oe - 1)), oe]);
+      } else if (ds.type === 'right') {
+        onZoomChange([os, Math.max(os + 1, Math.min(oe + dIdx, n - 1))]);
+      } else {
+        const span = oe - os;
+        const ns = Math.max(0, Math.min(os + dIdx, n - 1 - span));
+        onZoomChange([ns, ns + span]);
+      }
+    };
+    const onUp = () => { dragState.current = null; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [n, onZoomChange]);
+
+  return (
+    <div className="w-full mt-2 pl-[48px] pr-[16px]" style={{ userSelect: 'none' }}>
+      {/* Label row */}
+      <div className="w-full flex items-center justify-between mb-1">
+        <span className="text-[9px] uppercase tracking-widest text-gray-400 font-medium">
+          Zoom · drag handles or band to pan
+        </span>
+        <span className="text-[9px] text-[#4178be] font-medium">
+          {items[si]?.label} – {items[ei]?.label}&nbsp;·&nbsp;{ei - si + 1} of {n}
+        </span>
+      </div>
+
+      {/* Track */}
+      <div ref={containerRef} className="relative w-full h-[48px] rounded border border-gray-200 bg-gray-50 overflow-hidden">
+        {/* Mini bar silhouette */}
+        <div className="absolute inset-0 flex items-end">
+          {items.map((d, i) => {
+            const h = Math.max(2, Math.round((d.value / maxVal) * 42));
+            const inSel = i >= si && i <= ei;
+            const col = d.isOutage ? '#fca5a5' : inSel ? '#4178be' : '#d1d5db';
+            return (
+              <div key={i} className="flex-1 flex items-end" style={{ minWidth: 1 }}>
+                <div style={{ height: h, width: '100%', backgroundColor: col, opacity: inSel ? 1 : 0.45 }} />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Dim overlay — left unselected */}
+        <div className="absolute inset-y-0 left-0 bg-white/55 pointer-events-none" style={{ width: `${lPct}%` }} />
+        {/* Dim overlay — right unselected */}
+        <div className="absolute inset-y-0 right-0 bg-white/55 pointer-events-none" style={{ width: `${100 - rPct}%` }} />
+
+        {/* Selection band — drag to pan */}
+        <div
+          className="absolute inset-y-0 border-2 border-[#4178be] rounded cursor-grab active:cursor-grabbing"
+          style={{ left: `${lPct}%`, width: `${rPct - lPct}%` }}
+          onMouseDown={startDrag('pan')}
+        />
+
+        {/* Left resize handle */}
+        <div
+          className="absolute inset-y-0 flex items-center justify-center cursor-ew-resize z-10"
+          style={{ left: `${lPct}%`, width: 14, marginLeft: -7 }}
+          onMouseDown={startDrag('left')}
+        >
+          <div className="w-[3px] h-7 rounded-full bg-[#4178be] shadow-sm" />
+        </div>
+
+        {/* Right resize handle */}
+        <div
+          className="absolute inset-y-0 flex items-center justify-center cursor-ew-resize z-10"
+          style={{ left: `${rPct}%`, width: 14, marginLeft: -7 }}
+          onMouseDown={startDrag('right')}
+        >
+          <div className="w-[3px] h-7 rounded-full bg-[#4178be] shadow-sm" />
+        </div>
+      </div>
+
+      {/* Full-range axis labels */}
+      <div className="relative w-full h-4 mt-0.5 text-[8px] text-gray-400 select-none">
+        <span className="absolute left-0">{items[0]?.label}</span>
+        <span className="absolute right-0">{items[n - 1]?.label}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Year graph (with zoom support) ──────────────────────────────────────────
+function YearGraph({ zoomRange, onZoomChange }: {
+  zoomRange: [number, number];
+  onZoomChange: (r: [number, number]) => void;
+}) {
+  const visibleData = yearData.slice(zoomRange[0], zoomRange[1] + 1);
+
   const xTick = ({ x, y, payload }: any) => {
     // Only render month-start ticks
-    const point = yearData.find(p => p.date === payload.value);
+    const point = visibleData.find(p => p.date === payload.value);
     if (!point) return <g />;
-    // Only show the first week of each month
-    const isMonthStart = yearData.findIndex(p => p.monthLabel === point.monthLabel) ===
-                         yearData.findIndex(p => p.date === payload.value);
+    // Only show the first week of each month within the visible window
+    const isMonthStart = visibleData.findIndex(p => p.monthLabel === point.monthLabel) ===
+                         visibleData.findIndex(p => p.date === payload.value);
     if (!isMonthStart) return <g />;
     return (
       <text x={x} y={y + 12} textAnchor="middle" fontSize={10} fontFamily="'IBM Plex Sans', sans-serif" fill="#6b7280">
@@ -527,8 +689,8 @@ function YearGraph() {
   const anomalyRegions: Region[] = [];
   let regionStart: string | null = null;
   let prevAnomalyMonth: string | null = null;
-  for (let i = 0; i < yearData.length; i++) {
-    const p = yearData[i];
+  for (let i = 0; i < visibleData.length; i++) {
+    const p = visibleData[i];
     const isAnomaly = YEAR_ANOMALY_MONTHS.includes(p.monthLabel);
     if (isAnomaly) {
       if (regionStart === null) regionStart = p.date;
@@ -547,7 +709,7 @@ function YearGraph() {
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={yearData} margin={{ top: 10, right: 16, left: 48, bottom: 28 }}>
+      <ComposedChart data={visibleData} margin={{ top: 10, right: 16, left: 48, bottom: 28 }}>
         <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e5e7eb" strokeOpacity={0.8} />
 
         <XAxis
@@ -610,14 +772,18 @@ function YearGraph() {
           activeDot={{ r: 4, fill: '#0056e1', stroke: '#ffffff', strokeWidth: 1.5 }}
         />
 
-        {/* Failure dots — one hollow dot per gap sitting on the x-axis (y=0) */}
+        {/* Failure dots — rendered on top of bands */}
         <Line
           dataKey="failureDot"
           stroke="none"
           legendType="none"
           isAnimationActive={false}
           connectNulls={false}
-          activeDot={false}
+          activeDot={(props: any) => {
+            const { cx, cy, payload } = props;
+            if (payload?.failureDot === null || cx == null || cy == null) return <g />;
+            return <circle cx={cx} cy={cy} r={5} fill="#0056e1" stroke="#ffffff" strokeWidth={1.5} />;
+          }}
           dot={(props: any) => {
             const { cx, cy, payload } = props;
             if (payload?.failureDot === null || cx == null || cy == null) return <g />;
@@ -897,31 +1063,35 @@ function ChartLegend({ showPattern }: { showPattern?: boolean }) {
       {/* Expected value — amber/gold solid line */}
       <div className="flex gap-[6px] items-center w-full">
         <div className="bg-[#ffb900] h-[2px] shrink-0 w-[16px]" />
-        <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[normal] text-[#364153] whitespace-nowrap">
+        <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[normal] text-[#525252] whitespace-nowrap">
           Expected value
         </span>
         <LegendInfoIcon tip="Baseline forecast derived from historical patterns" />
       </div>
 
-      {/* +2 STD — dashed red line */}
+      {/* +2 STD — dashed red line (SVG for accurate dash rendering) */}
       <div className="flex gap-[6px] items-center w-full">
-        <div className="h-[2px] shrink-0 w-[16px] relative" style={{ borderTop: '2px dashed #da1e28' }} />
+        <svg width="16" height="8" viewBox="0 0 16 8" className="shrink-0">
+          <line x1="0" y1="4" x2="16" y2="4" stroke="#da1e28" strokeWidth="1.5" strokeDasharray="3 2" />
+        </svg>
         <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[15px] text-[#364153] whitespace-nowrap">
           +2 STD
         </span>
         <LegendInfoIcon tip="Upper control limit: +2 standard deviations above expected" />
       </div>
 
-      {/* -2 STD — dashed green line */}
+      {/* -2 STD — dashed green line (SVG for accurate dash rendering) */}
       <div className="flex gap-[6px] items-center w-full">
-        <div className="h-[2px] shrink-0 w-[16px] relative" style={{ borderTop: '2px dashed #15803d' }} />
+        <svg width="16" height="8" viewBox="0 0 16 8" className="shrink-0">
+          <line x1="0" y1="4" x2="16" y2="4" stroke="#15803d" strokeWidth="1.5" strokeDasharray="3 2" />
+        </svg>
         <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[15px] text-[#364153] whitespace-nowrap">
           -2 STD
         </span>
         <LegendInfoIcon tip="Lower control limit: −2 standard deviations below expected" />
       </div>
 
-      {/* ±2 STD — light blue/yellow swatch */}
+      {/* ±2 STD — light blue swatch */}
       <div className="flex gap-[6px] items-center w-full">
         <div className="bg-[#b9cef1] opacity-40 rounded-[1px] shrink-0 size-[16px]" />
         <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[15px] text-[#364153] whitespace-nowrap">
@@ -930,20 +1100,27 @@ function ChartLegend({ showPattern }: { showPattern?: boolean }) {
         <LegendInfoIcon tip="Shaded region between the ±2 standard deviation bounds" />
       </div>
 
-      {/* Zero value — blue dot */}
+      {/* Null — blue filled dot (Figma node 773:18724) */}
       <div className="flex gap-[6px] items-center w-full">
-        <div className="flex items-center justify-center shrink-0 w-[16px] h-[16px]">
-          <div className="rounded-full" style={{ width: 8, height: 8, backgroundColor: '#0056e1' }} />
+        <div className="flex items-center justify-center shrink-0 w-[18px] h-[6px]">
+          <div className="rounded-full" style={{ width: 6, height: 6, backgroundColor: '#0056e1' }} />
         </div>
         <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[15px] text-[#364153] whitespace-nowrap">
-          Zero value
+          Null
         </span>
         <LegendInfoIcon tip="A recorded value of 0 — no data was processed at this time" />
       </div>
 
-      {/* System outage — blue solid line */}
-      <div className="flex gap-[6px] items-center w-full">
-        <div className="bg-[#0056e1] h-[2px] shrink-0 w-[16px]" />
+      {/* System failure — pink/red bordered rectangle swatch (Figma node 773:18729) */}
+      <div className="flex gap-[12px] items-center px-[4px] w-full">
+        <div
+          className="shrink-0"
+          style={{
+            width: 5, height: 14,
+            backgroundColor: 'rgba(254,242,242,0.9)',
+            border: '1px solid #fca5a5',
+          }}
+        />
         <span className="font-['IBM_Plex_Sans'] text-[14px] leading-[15px] text-[#364153] whitespace-nowrap">
           System failure
         </span>
@@ -1627,6 +1804,8 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
   const [activeChartTab, setActiveChartTab] = useState<'chart' | 'grid'>('chart');
   const [isEditPanelOpen, setIsEditPanelOpen] = useState(false);
   const [isLegendCollapsed, setIsLegendCollapsed] = useState(false);
+  const [defaultZoomRange, setDefaultZoomRange] = useState<[number, number]>([0, hourlyData.length - 1]);
+  const [yearZoomRange, setYearZoomRange] = useState<[number, number]>([0, yearData.length - 1]);
 
   // Data controls
   const [zeroMode, setZeroMode] = useState<ZeroMode>('show');
@@ -1819,7 +1998,7 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
           {/* Description + Selection info — Figma node 610:30958: justify-between row */}
           <div className="mt-3 flex items-start justify-between gap-4">
 
-            {/* Left: Description block — node 610:30959 */}
+            {/* Left: Description block — Figma node 781:9724 */}
             <div
               className="flex flex-col flex-1 min-w-0"
               style={{ gap: 4, backgroundColor: '#ffffff', padding: '8px 0', borderRadius: 3.656, alignItems: 'flex-start' }}
@@ -1827,11 +2006,23 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
               <p style={{ fontSize: 14, fontWeight: 500, color: '#161616', lineHeight: 'normal' }}>
                 Description
               </p>
-              <p style={{ fontSize: 14, fontWeight: 400, color: '#525252', lineHeight: 'normal' }}>
-                Getpages Change Over Time for Db2 Data Sharing Group DB0H. This report shows the Getpages metric over
-                the selected date range, alongside the expected value and ±2 standard deviation bands derived from the
-                historical baseline model. Deviations outside the bands indicate statistically anomalous activity.
-              </p>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+                {/* Warning--filled icon matching Figma status notification */}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 16 16"
+                  style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }}
+                  fill="#da1e28"
+                  aria-label="Warning"
+                >
+                  <path d="M8 1C4.1 1 1 4.1 1 8s3.1 7 7 7 7-3.1 7-7-3.1-7-7-7zm-.75 4h1.5v4.5h-1.5V5zM8 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" />
+                </svg>
+                <p style={{ fontSize: 14, fontWeight: 400, color: '#161616', lineHeight: 'normal', flex: 1 }}>
+                  Some telemetry data is missing due to a network maintenance outage. This report shows the Getpages
+                  metric over time for Db2 Data Sharing Group DB0H, including expected values and normal variation
+                  ranges. Values outside these ranges suggest unusual activity.
+                </p>
+              </div>
             </div>
 
             {/* Right: Selection info card — node 610:30964 */}
@@ -1983,22 +2174,34 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
               ) : (
                 <div className="flex items-start gap-[8px] p-[20px]">
                   {/* LineChart column */}
-                  <div className="flex flex-1 flex-col items-start min-w-0">
+                  {/* LineChart column — Figma node 773:18484 "Default Graph": relative size-full */}
+                  <div className="flex flex-1 flex-col min-w-0">
                     {/* % Service Time label */}
                     <div className="flex w-full justify-end pr-[8px] shrink-0">
                       <span className="font-['IBM_Plex_Sans'] text-[12px] leading-[16px] text-[#99a1af] text-right">
                         % Service Time
                       </span>
                     </div>
-                    {/* Chart surface row */}
-                    {/* YearGraph when 'Current year' is selected (Figma 746:16221); DefaultGraph otherwise */}
-                    <div className="flex h-[324px] w-full items-start pt-[4px] shrink-0">
-                      <div className="flex flex-1 flex-col items-start min-w-0 h-[320px]">
-                        <div className="relative h-[320px] overflow-hidden shrink-0 w-full">
-                          {activeSelection?.timeRangeLabel === 'Current year' ? <YearGraph /> : <DefaultGraph />}
-                        </div>
-                      </div>
+                    {/* Chart surface — Figma node 773:18484: relative size-full */}
+                    <div className="relative w-full h-[320px]">
+                      {activeSelection?.timeRangeLabel === 'Current year'
+                        ? <YearGraph zoomRange={yearZoomRange} onZoomChange={setYearZoomRange} />
+                        : <DefaultGraph zoomRange={defaultZoomRange} />}
                     </div>
+                    {/* Zoom/pan bar — always visible below the chart */}
+                    {activeSelection?.timeRangeLabel === 'Current year' ? (
+                      <ZoomBar
+                        items={yearData.map(d => ({ label: d.monthLabel, value: d.expected, isOutage: d.actual === null }))}
+                        zoomRange={yearZoomRange}
+                        onZoomChange={setYearZoomRange}
+                      />
+                    ) : (
+                      <ZoomBar
+                        items={hourlyData.map(d => ({ label: d.time, value: d.expected, isOutage: d.actual === null }))}
+                        zoomRange={defaultZoomRange}
+                        onZoomChange={setDefaultZoomRange}
+                      />
+                    )}
                   </div>
                   {/* Legend — hidden when collapsed */}
                   {!isLegendCollapsed && (
@@ -2011,77 +2214,166 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
             </div>
           )}
 
-          {activeChartTab === 'grid' && (
-            <div className="overflow-auto p-[20px]">
-              <table className="border-collapse" style={{ fontSize: 14, color: '#0a0a0a', fontFamily: "'IBM Plex Sans', sans-serif" }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f3f4f6', height: 37 }}>
-                    <th style={{ border: '1px solid #d1d5dc', padding: '7px 11.5px', textAlign: 'left', fontWeight: 700, lineHeight: '20px', width: 117, whiteSpace: 'nowrap' }}>
-                      Hour
-                    </th>
-                    <th style={{ border: '1px solid #d1d5dc', padding: '7px 11.5px', textAlign: 'right', fontWeight: 700, lineHeight: '20px', width: 254, whiteSpace: 'nowrap' }}>
-                      DB0H01 Getpages
-                    </th>
-                    <th style={{ border: '1px solid #d1d5dc', padding: '7px 11.5px', textAlign: 'right', fontWeight: 700, lineHeight: '20px', width: 254, whiteSpace: 'nowrap' }}>
-                      DB0H02 Getpages
-                    </th>
-                    <th style={{ border: '1px solid #d1d5dc', padding: '7px 11.5px', textAlign: 'right', fontWeight: 700, lineHeight: '20px', width: 254, whiteSpace: 'nowrap' }}>
-                      DB0H03 Getpages
-                    </th>
-                    <th style={{ border: '1px solid #d1d5dc', padding: '7px 11.5px', textAlign: 'right', fontWeight: 700, lineHeight: '20px', width: 216, whiteSpace: 'nowrap' }}>
-                      Total Getpages
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { hour: '00:00', db1: 2840,  db2: 3120,  db3: 1890,  total: 7850  },
-                    { hour: '01:00', db1: 1820,  db2: 1960,  db3: 1240,  total: 5020  },
-                    { hour: '02:00', db1: 980,   db2: 1120,  db3: 720,   total: 2820  },
-                    { hour: '03:00', db1: 760,   db2: 840,   db3: 510,   total: 2110  },
-                    { hour: '04:00', db1: 890,   db2: 960,   db3: 590,   total: 2440  },
-                    { hour: '05:00', db1: 1240,  db2: 1380,  db3: 840,   total: 3460  },
-                    { hour: '06:00', db1: 2840,  db2: 3100,  db3: 1920,  total: 7860  },
-                    { hour: '07:00', db1: 5680,  db2: 6240,  db3: 3920,  total: 15840 },
-                    { hour: '08:00', db1: 8920,  db2: 9780,  db3: 6140,  total: 24840 },
-                    { hour: '09:00', db1: 11200, db2: 12400, db3: 7800,  total: 31400 },
-                    { hour: '10:00', db1: 12840, db2: 14200, db3: 8920,  total: 35960 },
-                    { hour: '11:00', db1: 13200, db2: 14680, db3: 9200,  total: 37080 },
-                    { hour: '12:00', db1: 11800, db2: 13100, db3: 8280,  total: 33180 },
-                    { hour: '13:00', db1: 12400, db2: 13600, db3: 8560,  total: 34560 },
-                    { hour: '14:00', db1: 11600, db2: 12800, db3: 8040,  total: 32440 },
-                    { hour: '15:00', db1: 10800, db2: 11960, db3: 7520,  total: 30280 },
-                    { hour: '16:00', db1: 9800,  db2: 10840, db3: 6820,  total: 27460 },
-                    { hour: '17:00', db1: 7600,  db2: 8400,  db3: 5280,  total: 21280 },
-                    { hour: '18:00', db1: 5400,  db2: 5960,  db3: 3740,  total: 15100 },
-                    { hour: '19:00', db1: 4200,  db2: 4620,  db3: 2900,  total: 11720 },
-                    { hour: '20:00', db1: 3600,  db2: 3980,  db3: 2500,  total: 10080 },
-                    { hour: '21:00', db1: 3200,  db2: 3520,  db3: 2210,  total: 8930  },
-                    { hour: '22:00', db1: 2960,  db2: 3260,  db3: 2050,  total: 8270  },
-                    { hour: '23:00', db1: 2680,  db2: 2960,  db3: 1860,  total: 7500  },
-                  ].map((row, i) => (
-                    <tr key={row.hour} style={{ height: 33, backgroundColor: i % 2 === 0 ? '#ffffff' : '#ffffff' }}>
-                      <td style={{ border: '1px solid #d1d5dc', padding: '5px 11.5px', fontFamily: 'Menlo, monospace', lineHeight: '20px', whiteSpace: 'nowrap' }}>
-                        {row.hour}
-                      </td>
-                      <td style={{ border: '1px solid #d1d5dc', padding: '5px 11.5px', textAlign: 'right', lineHeight: '20px', whiteSpace: 'nowrap' }}>
-                        {row.db1.toLocaleString()}
-                      </td>
-                      <td style={{ border: '1px solid #d1d5dc', padding: '5px 11.5px', textAlign: 'right', lineHeight: '20px', whiteSpace: 'nowrap' }}>
-                        {row.db2.toLocaleString()}
-                      </td>
-                      <td style={{ border: '1px solid #d1d5dc', padding: '5px 11.5px', textAlign: 'right', lineHeight: '20px', whiteSpace: 'nowrap' }}>
-                        {row.db3.toLocaleString()}
-                      </td>
-                      <td style={{ border: '1px solid #d1d5dc', padding: '5px 11.5px', textAlign: 'right', fontWeight: 500, lineHeight: '20px', whiteSpace: 'nowrap' }}>
-                        {row.total.toLocaleString()}
-                      </td>
+          {activeChartTab === 'grid' && (() => {
+            const isCurrentYear = activeSelection?.timeRangeLabel === 'Current year';
+
+            // ── Shared cell renderer ──────────────────────────────────────────
+            const thStyle: React.CSSProperties = {
+              border: '1px solid #d1d5dc',
+              padding: '7px 11.5px',
+              fontWeight: 700,
+              lineHeight: '20px',
+              whiteSpace: 'nowrap',
+            };
+            const baseCellStyle: React.CSSProperties = {
+              border: '1px solid #d1d5dc',
+              padding: '5px 11.5px',
+              lineHeight: '20px',
+              whiteSpace: 'nowrap',
+            };
+            const renderCell = (val: number | null, isOutage: boolean) => {
+              if (isOutage) return <span style={{ color: '#99a1af', fontStyle: 'italic' }}>—</span>;
+              if (val === 0) return <span>0</span>;
+              return <span style={{ color: '#99a1af', fontStyle: 'italic' }}>{val!.toLocaleString()}</span>;
+            };
+
+            if (isCurrentYear) {
+              // ── Monthly grid derived from yearData ────────────────────────
+              // Aggregate weekly points by monthLabel; a month is an outage if
+              // any of its weeks had actual === null.
+              const monthOrder = [
+                "Aug '25", "Sep '25", "Oct '25", "Nov '25", "Dec '25",
+                "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26",
+                "Jun '26", "Jul '26", "Aug '26",
+              ];
+              type MonthRow = {
+                month: string;
+                db1: number | null;
+                db2: number | null;
+                db3: number | null;
+                total: number | null;
+                outage: boolean;
+                allZero: boolean;
+              };
+              const monthMap = new Map<string, { sum: number; hasNull: boolean; allZero: boolean }>();
+              for (const p of yearData) {
+                const key = p.monthLabel;
+                const prev = monthMap.get(key) ?? { sum: 0, hasNull: false, allZero: true };
+                if (p.actual === null) {
+                  monthMap.set(key, { ...prev, hasNull: true, allZero: false });
+                } else {
+                  monthMap.set(key, {
+                    sum: prev.sum + p.actual,
+                    hasNull: prev.hasNull,
+                    allZero: prev.allZero && p.actual === 0,
+                  });
+                }
+              }
+              const monthRows: MonthRow[] = monthOrder.map(month => {
+                const agg = monthMap.get(month);
+                if (!agg) return { month, db1: null, db2: null, db3: null, total: null, outage: true, allZero: false };
+                if (agg.hasNull) return { month, db1: null, db2: null, db3: null, total: null, outage: true, allZero: false };
+                const total = agg.sum;
+                if (agg.allZero) return { month, db1: 0, db2: 0, db3: 0, total: 0, outage: false, allZero: true };
+                // Split total into per-DB proportions matching Figma (DB1≈35.5%, DB2≈39.5%, DB3≈25%)
+                const db1 = Math.round(total * 0.355);
+                const db2 = Math.round(total * 0.395);
+                const db3 = total - db1 - db2;
+                return { month, db1, db2, db3, total, outage: false, allZero: false };
+              });
+
+              return (
+                <div className="overflow-auto p-[20px]">
+                  <table className="border-collapse" style={{ fontSize: 14, color: '#0a0a0a', fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f3f4f6', height: 37 }}>
+                        <th style={{ ...thStyle, textAlign: 'left', width: 117 }}>Month</th>
+                        <th style={{ ...thStyle, textAlign: 'left', width: 113 }}>Quality</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 226 }}>DB0H01 Getpages</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 226 }}>DB0H02 Getpages</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 226 }}>DB0H03 Getpages</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 192 }}>Total Getpages</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthRows.map((row, i) => {
+                        const isOutage = row.outage;
+                        const rowBg = isOutage ? '#fef2f2' : (i % 2 === 1 ? '#f9fafb' : '#ffffff');
+                        return (
+                          <tr key={row.month} style={{ height: 33, backgroundColor: rowBg }}>
+                            <td style={{ ...baseCellStyle, fontWeight: 500 }}>{row.month}</td>
+                            <td style={{ ...baseCellStyle }} />
+                            <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db1, isOutage)}</td>
+                            <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db2, isOutage)}</td>
+                            <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db3, isOutage)}</td>
+                            <td style={{ ...baseCellStyle, textAlign: 'right', fontWeight: isOutage ? 400 : 500 }}>{renderCell(row.total, isOutage)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
+
+            // ── Hourly grid (default / non-current-year intervals) ────────────
+            const hourlyRows: { hour: string; db1: number | null; db2: number | null; db3: number | null; total: number | null; outage: boolean }[] = [
+              { hour: '00:00', db1: 2840,  db2: 3120,  db3: 1890,  total: 7850,  outage: false },
+              { hour: '01:00', db1: null,  db2: null,  db3: null,  total: null,  outage: true  },
+              { hour: '02:00', db1: 980,   db2: 1120,  db3: 720,   total: 2820,  outage: false },
+              { hour: '03:00', db1: null,  db2: null,  db3: null,  total: null,  outage: true  },
+              { hour: '04:00', db1: 890,   db2: 960,   db3: 590,   total: 2440,  outage: false },
+              { hour: '05:00', db1: null,  db2: null,  db3: null,  total: null,  outage: true  },
+              { hour: '06:00', db1: 0,     db2: 0,     db3: 0,     total: 0,     outage: false },
+              { hour: '07:00', db1: 5680,  db2: 6240,  db3: 3920,  total: 15840, outage: false },
+              { hour: '08:00', db1: 8920,  db2: 9780,  db3: 6140,  total: 24840, outage: false },
+              { hour: '09:00', db1: 11200, db2: 12400, db3: 7800,  total: 31400, outage: false },
+              { hour: '10:00', db1: 12840, db2: 14200, db3: 8920,  total: 35960, outage: false },
+              { hour: '11:00', db1: 13200, db2: 14680, db3: 9200,  total: 37080, outage: false },
+              { hour: '12:00', db1: 11800, db2: 13100, db3: 8280,  total: 33180, outage: false },
+              { hour: '13:00', db1: 12400, db2: 13600, db3: 8560,  total: 34560, outage: false },
+              { hour: '14:00', db1: 11600, db2: 12800, db3: 8040,  total: 32440, outage: false },
+              { hour: '15:00', db1: 10800, db2: 11960, db3: 7520,  total: 30280, outage: false },
+              { hour: '16:00', db1: 9800,  db2: 10840, db3: 6820,  total: 27460, outage: false },
+              { hour: '17:00', db1: 0,     db2: 0,     db3: 0,     total: 0,     outage: false },
+              { hour: '18:00', db1: 5400,  db2: 5960,  db3: 3740,  total: 15100, outage: false },
+              { hour: '19:00', db1: 4200,  db2: 4620,  db3: 2900,  total: 11720, outage: false },
+              { hour: '20:00', db1: 3600,  db2: 3980,  db3: 2500,  total: 10080, outage: false },
+              { hour: '21:00', db1: null,  db2: null,  db3: null,  total: null,  outage: true  },
+              { hour: '22:00', db1: 2960,  db2: 3260,  db3: 2050,  total: 8270,  outage: false },
+              { hour: '23:00', db1: 2680,  db2: 2960,  db3: 1860,  total: 7500,  outage: false },
+            ];
+            return (
+              <div className="overflow-auto p-[20px]">
+                <table className="border-collapse" style={{ fontSize: 14, color: '#0a0a0a', fontFamily: "'IBM Plex Sans', sans-serif" }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f3f4f6', height: 37 }}>
+                      <th style={{ ...thStyle, textAlign: 'left', width: 117 }}>Hour</th>
+                      <th style={{ ...thStyle, textAlign: 'right', width: 254 }}>DB0H01 Getpages</th>
+                      <th style={{ ...thStyle, textAlign: 'right', width: 254 }}>DB0H02 Getpages</th>
+                      <th style={{ ...thStyle, textAlign: 'right', width: 254 }}>DB0H03 Getpages</th>
+                      <th style={{ ...thStyle, textAlign: 'right', width: 216 }}>Total Getpages</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {hourlyRows.map((row, i) => {
+                      const isOutage = row.outage;
+                      const rowBg = isOutage ? '#fef2f2' : (i % 2 === 1 ? '#f9fafb' : '#ffffff');
+                      return (
+                        <tr key={row.hour} style={{ height: 33, backgroundColor: rowBg }}>
+                          <td style={{ ...baseCellStyle, fontFamily: 'Menlo, monospace' }}>{row.hour}</td>
+                          <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db1, isOutage)}</td>
+                          <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db2, isOutage)}</td>
+                          <td style={{ ...baseCellStyle, textAlign: 'right' }}>{renderCell(row.db3, isOutage)}</td>
+                          <td style={{ ...baseCellStyle, textAlign: 'right', fontWeight: isOutage ? 400 : 500 }}>{renderCell(row.total, isOutage)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
 
         </div>
 
