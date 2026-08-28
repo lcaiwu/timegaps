@@ -360,19 +360,26 @@ function DefaultGraph({ zoomRange }: { zoomRange: [number, number] }) {
 const YEAR_EXPECTED_BASE = 1_700_000;
 const YEAR_SD_BASE = 320_000;
 
-// Outage windows as [startDay, endDay] inclusive (0-based from Aug 4 2025).
-// Intentionally sparse — ~10 gaps total, well spaced, mix of wide and narrow.
+// Current year: Jan 1 → today (dynamic)
+const _YEAR_ANCHOR = new Date(new Date().getFullYear(), 0, 1); // Jan 1 of current year
+const _YEAR_TODAY  = new Date();
+// Total days inclusive: day 0 = Jan 1, last day = today
+const _YEAR_TOTAL  = Math.floor(
+  (_YEAR_TODAY.getTime() - _YEAR_ANCHOR.getTime()) / 86400000
+) + 1;
+
+// Outage windows as [startDay, endDay] inclusive (0-based from Jan 1 of current year).
+// Spread across ~240 days (Jan–Aug), mix of wide and narrow, well spaced.
 const YEAR_OUTAGE_WINDOWS: [number, number][] = [
-  [22,  27],  // wide   – late Aug '25
-  [62,  63],  // narrow – early Oct '25
-  [105, 111], // wide   – early Nov '25
-  [148, 149], // narrow – mid Dec '25
-  [178, 184], // wide   – mid Jan '26
-  [222, 223], // narrow – early Feb '26
-  [258, 264], // wide   – mid Mar '26
-  [301, 302], // narrow – late Apr '26
-  [330, 336], // wide   – late May '26
-  [358, 359], // narrow – late Jun '26
+  [12,  14],  // narrow – mid Jan
+  [38,  43],  // wide   – early Feb
+  [71,  72],  // narrow – mid Mar
+  [95, 101],  // wide   – early Apr
+  [128, 129], // narrow – early May
+  [152, 157], // wide   – early Jun
+  [183, 184], // narrow – early Jul
+  [205, 210], // wide   – late Jul
+  [228, 229], // narrow – mid Aug
 ];
 
 // Build a Set for O(1) lookup
@@ -385,7 +392,8 @@ function buildYearData() {
   type YearPoint = {
     date: string;
     weekStart: string;
-    monthLabel: string;
+    monthLabel: string;       // e.g. "Jan '26" — used in tooltip
+    axisMonth: string | null; // "M/YYYY" on the 1st of each month, null otherwise
     actual: number | null;
     failureDot: number | null;
     expected: number;
@@ -396,38 +404,30 @@ function buildYearData() {
   };
 
   const points: YearPoint[] = [];
-  const ANCHOR = new Date('2025-08-04');
-  const TOTAL_DAYS = 365;
-
-  const MONTH_LABELS: Record<number, string> = {
-    0: "Aug '25", 1: "Sep '25", 2: "Oct '25", 3: "Nov '25",
-    4: "Dec '25", 5: "Jan '26", 6: "Feb '26", 7: "Mar '26",
-    8: "Apr '26", 9: "May '26", 10: "Jun '26", 11: "Jul '26",
-  };
+  const ANCHOR    = _YEAR_ANCHOR;
+  const TOTAL_DAYS = _YEAR_TOTAL;
 
   for (let day = 0; day < TOTAL_DAYS; day++) {
-    const d = new Date(ANCHOR);
-    d.setDate(ANCHOR.getDate() + day);
+    const d = new Date(ANCHOR.getFullYear(), ANCHOR.getMonth(), ANCHOR.getDate() + day);
 
-    // month 0-11 relative to Aug 2025
-    const absMonth = d.getFullYear() * 12 + d.getMonth();
-    const anchorAbsMonth = 2025 * 12 + 7; // Aug 2025
-    const relMonth = absMonth - anchorAbsMonth;
-    const monthLabel = MONTH_LABELS[relMonth] ?? "Aug '26";
+    const monthLabel = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+      .replace(' ', " '"); // e.g. "Jan '26"
+
+    // axisMonth: "M/YYYY" only on the 1st day of each calendar month
+    const axisMonth = d.getDate() === 1 ? `${d.getMonth() + 1}/${d.getFullYear()}` : null;
 
     const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-    const t = day / TOTAL_DAYS;
+    const t = day / Math.max(1, TOTAL_DAYS - 1);
     const expectedCurve = YEAR_EXPECTED_BASE
       + Math.sin(t * Math.PI * 0.6) * 200_000
       + t * 100_000;
     const expected = Math.round(expectedCurve);
 
-    const sd = YEAR_SD_BASE + day * 60; // grows gently over year
+    const sd = YEAR_SD_BASE + day * 60;
     const sd2U = Math.round(expected + 2 * sd);
     const sd2L = Math.max(0, Math.round(expected - 2 * sd));
 
-    // Volatile noise — higher frequency than weekly for a dense jagged look
     const noise = Math.sin(day * 0.31 + 1.3) * 340_000
                 + Math.cos(day * 0.17 + 0.8) * 160_000
                 + Math.sin(day * 0.07 + 2.1) * 80_000;
@@ -439,6 +439,7 @@ function buildYearData() {
       date: dateLabel,
       weekStart: dateLabel,
       monthLabel,
+      axisMonth,
       actual,
       failureDot: null,
       expected,
@@ -449,9 +450,8 @@ function buildYearData() {
     });
   }
 
-  // Place failureDot=0 at random non-outage days scattered across the year.
-  // These are intentional annotation dots — not tied to gap boundaries.
-  const DOT_DAYS = [7, 15, 42, 58, 81, 97, 130, 155, 171, 205, 233, 250, 275, 310, 340, 362];
+  // Annotation dots — irregular positions across the full range, not evenly spaced
+  const DOT_DAYS = [3, 19, 32, 51, 63, 84, 92, 107, 118, 135, 147, 161, 172, 188, 200, 214, 224, 233];
   for (const day of DOT_DAYS) {
     if (day < points.length && points[day].actual !== null) {
       points[day].failureDot = 0;
@@ -666,16 +666,12 @@ function YearGraph({ zoomRange, onZoomChange }: {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const xTick = ({ x, y, payload }: any) => {
-    // Only render month-start ticks
+    // Only render on the 1st of each calendar month (axisMonth is non-null)
     const point = visibleData.find(p => p.date === payload.value);
-    if (!point) return <g />;
-    // Only show the first day of each month within the visible window
-    const isMonthStart = visibleData.findIndex(p => p.monthLabel === point.monthLabel) ===
-                         visibleData.findIndex(p => p.date === payload.value);
-    if (!isMonthStart) return <g />;
+    if (!point?.axisMonth) return <g />;
     return (
       <text x={x} y={y + 12} textAnchor="middle" fontSize={10} fontFamily="'IBM Plex Sans', sans-serif" fill="#6b7280">
-        {point.monthLabel}
+        {point.axisMonth}
       </text>
     );
   };
@@ -814,6 +810,112 @@ function YearGraph({ zoomRange, onZoomChange }: {
             strokeOpacity={0.6}
           />
         ))}
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+
+// ─── Daily graph (Current Week / Previous Week / Current Month) ───────────────
+// Generates one point per calendar day between startDate and endDate (inclusive).
+
+function buildDailyData(startDate: Date, endDate: Date) {
+  const EXPECTED_BASE = 1_600_000;
+  const SD_BASE = 230_000;
+  const points: {
+    date: string;
+    actual: number | null;
+    failureDot: number | null;
+    expected: number;
+    sd2Upper: number; sd2Lower: number;
+    bandOuterBase: number; bandOuterHeight: number;
+  }[] = [];
+
+  let day = 0;
+  const cur = new Date(startDate);
+  while (cur <= endDate) {
+    // M/D format (e.g. "8/18")
+    const mLabel = `${cur.getMonth() + 1}/${cur.getDate()}`;
+
+    const t = day / Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000));
+    const arc = Math.sin(t * Math.PI);
+    const exp = EXPECTED_BASE + arc * 300_000;
+    const sd = SD_BASE + day * 800;
+    const noise = Math.sin(day * 0.6 + 1.3) * 220_000 + Math.cos(day * 0.35) * 90_000;
+    const sd2U = Math.round(exp + 2 * sd);
+    const sd2L = Math.max(0, Math.round(exp - 2 * sd));
+
+    points.push({
+      date: mLabel,
+      actual: Math.max(0, Math.round(exp + noise)),
+      failureDot: null,
+      expected: Math.round(exp),
+      sd2Upper: sd2U, sd2Lower: sd2L,
+      bandOuterBase: sd2L, bandOuterHeight: sd2U - sd2L,
+    });
+
+    cur.setDate(cur.getDate() + 1);
+    day++;
+  }
+  return points;
+}
+
+function DailyGraph({ data, zoomRange }: { data: ReturnType<typeof buildDailyData>; zoomRange: [number, number] }) {
+  const visibleData = data.slice(zoomRange[0], zoomRange[1] + 1);
+
+  const xTick = ({ x, y, payload }: any) => (
+    <text x={x} y={y + 10} textAnchor="middle" fontSize={10} fontFamily="'IBM Plex Sans', sans-serif" fill="#6b7280">
+      {payload.value}
+    </text>
+  );
+
+  const yTick = ({ x, y, payload }: any) => (
+    <text x={x - 4} y={y} textAnchor="end" dominantBaseline="middle" fontSize={10} fontFamily="'IBM Plex Sans', sans-serif" fill="#6b7280">
+      {fmtDefaultY(payload.value)}
+    </text>
+  );
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart data={visibleData} margin={{ top: 10, right: 16, left: 48, bottom: 24 }}>
+        <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e5e7eb" strokeOpacity={0.8} />
+        <XAxis
+          dataKey="date"
+          tick={xTick}
+          interval={0}
+          axisLine={{ stroke: '#e5e7eb' }}
+          tickLine={false}
+          height={32}
+        />
+        <YAxis
+          tick={yTick}
+          width={48}
+          domain={[0, 2_800_000]}
+          ticks={[0, 400_000, 800_000, 1_200_000, 1_600_000, 2_000_000, 2_400_000, 2_800_000]}
+          axisLine={false}
+          tickLine={{ stroke: '#e5e7eb', strokeWidth: 1 }}
+        />
+        <Tooltip
+          content={<DefaultTooltip />}
+          cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 2' }}
+        />
+        <ReferenceLine y={0} stroke="#d1d5db" strokeWidth={1} />
+        <Area name="band-outer-base" dataKey="bandOuterBase" stackId="dg-outer" stroke="none" fill="#ffffff" fillOpacity={0.6} legendType="none" isAnimationActive={false} />
+        <Area name="band-outer-fill" dataKey="bandOuterHeight" stackId="dg-outer" stroke="none" fill="#dbeafe" fillOpacity={0.85} legendType="none" isAnimationActive={false} />
+        <Line name="sd2-upper" dataKey="sd2Upper" stroke="#da1e28" strokeWidth={1} strokeDasharray="5 3" dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="linear" />
+        <Line name="sd2-lower" dataKey="sd2Lower" stroke="#15803d" strokeWidth={1} strokeDasharray="5 3" dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="linear" />
+        <Line name="expected" dataKey="expected" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot={false} legendType="none" isAnimationActive={false} type="monotone" connectNulls />
+        <Line
+          dataKey="actual"
+          stroke="#0056e1"
+          strokeWidth={2}
+          legendType="none"
+          isAnimationActive={false}
+          type="linear"
+          connectNulls={false}
+          dot={false}
+          activeDot={{ r: 4, fill: '#4b5563', stroke: '#ffffff', strokeWidth: 1.5 }}
+        />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -1026,19 +1128,21 @@ function LegendInfoIcon({ tip }: { tip: string }) {
         <text x="6.5" y="10" textAnchor="middle" fontSize="8.5" fill="currentColor" fontFamily="IBM Plex Sans, sans-serif" fontWeight="600">i</text>
       </svg>
       <div
-        className="pointer-events-none absolute left-1/2 bottom-full mb-1.5 z-50 hidden group-hover:flex"
-        style={{ transform: 'translateX(-50%)' }}
+        className="pointer-events-none absolute bottom-full mb-2 z-50 hidden group-hover:block"
+        style={{ right: '-8px' }}
       >
         <div
           style={{
             background: '#1c2a38',
             color: '#ffffff',
-            fontSize: 11,
-            lineHeight: '15px',
-            padding: '4px 8px',
-            borderRadius: 3,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+            fontSize: 12,
+            lineHeight: '18px',
+            padding: '8px 10px',
+            borderRadius: 4,
+            width: 200,
+            whiteSpace: 'normal',
+            wordBreak: 'break-word',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
             fontFamily: "'IBM Plex Sans', sans-serif",
           }}
         >
@@ -1048,12 +1152,11 @@ function LegendInfoIcon({ tip }: { tip: string }) {
         <div style={{
           position: 'absolute',
           top: '100%',
-          left: '50%',
-          transform: 'translateX(-50%)',
+          right: 10,
           width: 0, height: 0,
-          borderLeft: '5px solid transparent',
-          borderRight: '5px solid transparent',
-          borderTop: '5px solid #1c2a38',
+          borderLeft: '6px solid transparent',
+          borderRight: '6px solid transparent',
+          borderTop: '6px solid #1c2a38',
         }} />
       </div>
     </div>
@@ -1819,7 +1922,14 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
   const [isEditPanelOpen, setIsEditPanelOpen] = useState(false);
   const [isLegendCollapsed, setIsLegendCollapsed] = useState(false);
   const [defaultZoomRange, setDefaultZoomRange] = useState<[number, number]>([0, hourlyData.length - 1]);
-  const [yearZoomRange, setYearZoomRange] = useState<[number, number]>([0, yearData.length - 1]);
+  const [yearZoomRange, setYearZoomRange] = useState<[number, number]>(() => [0, yearData.length - 1]);
+  const [cwZoomRange,   setCwZoomRange]   = useState<[number, number]>([0, 6]);
+  const [pwZoomRange,   setPwZoomRange]   = useState<[number, number]>([0, 6]);
+  const [cmZoomRange,   setCmZoomRange]   = useState<[number, number]>(() => {
+    const today = new Date();
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    return [0, lastDay - 1];
+  });
 
   // Data controls
   const [zeroMode, setZeroMode] = useState<ZeroMode>('show');
@@ -1844,6 +1954,47 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
 
   const dateLabels = lineChartData.map(p => p.date);
   const hasComparison = !!activeSelection?.comparison;
+
+  // ── Daily data for quick-select week / month ranges ────────────────────────
+  const _today = new Date();
+  // Current week: Monday–Sunday of the current week
+  const _cwMon = new Date(_today);
+  _cwMon.setDate(_today.getDate() - ((_today.getDay() + 6) % 7)); // Monday
+  const _cwSun = new Date(_cwMon);
+  _cwSun.setDate(_cwMon.getDate() + 6); // Sunday
+
+  // Previous week: Monday–Sunday of the prior week
+  const _pwMon = new Date(_cwMon);
+  _pwMon.setDate(_cwMon.getDate() - 7);
+  const _pwSun = new Date(_pwMon);
+  _pwSun.setDate(_pwMon.getDate() + 6);
+
+  // Current month: 1st through last day of current month
+  const _cmStart = new Date(_today.getFullYear(), _today.getMonth(), 1);
+  const _cmEnd = new Date(_today.getFullYear(), _today.getMonth() + 1, 0);
+
+  const currentWeekData = useMemo(() => buildDailyData(_cwMon, _cwSun), []);
+  const previousWeekData = useMemo(() => buildDailyData(_pwMon, _pwSun), []);
+  const currentMonthData = useMemo(() => buildDailyData(_cmStart, _cmEnd), []);
+
+  const label = activeSelection?.timeRangeLabel ?? '';
+
+  // Helper: format a Date as MM/dd/yyyy to match SelectionPanel's format() output
+  const _fmt = (d: Date) =>
+    `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+
+  // Current year label: "01/01/YYYY - MM/DD/YYYY"
+  const _yearStart = new Date(_today.getFullYear(), 0, 1);
+  const isCurrentYear = label.startsWith(_fmt(_yearStart));
+
+  // Current week label starts with the Monday of this week
+  const isCurrentWeek = label.startsWith(_fmt(_cwMon));
+
+  // Previous week label starts with the Monday of last week
+  const isPreviousWeek = label.startsWith(_fmt(_pwMon));
+
+  // Current month label starts with the 1st of this month (and is not a week)
+  const isCurrentMonth = label.startsWith(_fmt(_cmStart)) && !isCurrentWeek;
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -2021,20 +2172,10 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
                 Description
               </p>
               <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
-                {/* Warning--filled icon matching Figma status notification */}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 16 16"
-                  style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }}
-                  fill="#da1e28"
-                  aria-label="Warning"
-                >
-                  <path d="M8 1C4.1 1 1 4.1 1 8s3.1 7 7 7 7-3.1 7-7-3.1-7-7-7zm-.75 4h1.5v4.5h-1.5V5zM8 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" />
-                </svg>
                 <p style={{ fontSize: 14, fontWeight: 400, color: '#161616', lineHeight: 'normal', flex: 1 }}>
-                  Some telemetry data is missing due to a network maintenance outage. This report shows the Getpages
-                  metric over time for Db2 Data Sharing Group DB0H, including expected values and normal variation
-                  ranges. Values outside these ranges suggest unusual activity.
+                  {isCurrentWeek
+                    ? 'This report shows the Getpages metric over time for Db2 Data Sharing Group DB0H, including expected values and normal variation ranges.'
+                    : 'Some telemetry data is missing due to a network maintenance outage. This report shows the Getpages metric over time for Db2 Data Sharing Group DB0H, including expected values and normal variation ranges. Values outside these ranges suggest unusual activity.'}
                 </p>
               </div>
             </div>
@@ -2055,11 +2196,21 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
             >
               {/* Left column: date + rows */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, width: 267 }}>
-                <p style={{ fontSize: 14, fontWeight: 400, color: '#000000', letterSpacing: '-0.325px', lineHeight: 'normal' }}>
-                  {activeSelection
-                    ? activeSelection.timeRangeLabel
-                    : '08/26/2026'}
-                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <p style={{ fontSize: 14, fontWeight: 400, color: '#000000', letterSpacing: '-0.325px', lineHeight: 'normal' }}>
+                    {activeSelection ? activeSelection.timeRangeLabel : '08/26/2026'}
+                  </p>
+                  {activeSelection?.daysOfWeekFull && (
+                    <p style={{ fontSize: 12, fontWeight: 400, color: '#525252', letterSpacing: '-0.2px', lineHeight: 'normal' }}>
+                      {activeSelection.daysOfWeekFull}
+                    </p>
+                  )}
+                  {activeSelection?.endOfMonthSummary && (
+                    <p style={{ fontSize: 12, fontWeight: 400, color: '#525252', letterSpacing: '-0.2px', lineHeight: 'normal' }}>
+                      {activeSelection.endOfMonthSummary}
+                    </p>
+                  )}
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {/* Interest Groups row */}
                   <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -2198,16 +2349,40 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
                     </div>
                     {/* Chart surface — Figma node 773:18484: relative size-full */}
                     <div className="relative w-full h-[320px]">
-                      {activeSelection?.timeRangeLabel === 'Current year'
+                      {isCurrentYear
                         ? <YearGraph zoomRange={yearZoomRange} onZoomChange={setYearZoomRange} />
-                        : <DefaultGraph zoomRange={defaultZoomRange} />}
+                        : isCurrentWeek
+                          ? <DailyGraph data={currentWeekData} zoomRange={cwZoomRange} />
+                          : isPreviousWeek
+                            ? <DailyGraph data={previousWeekData} zoomRange={pwZoomRange} />
+                            : isCurrentMonth
+                              ? <DailyGraph data={currentMonthData} zoomRange={cmZoomRange} />
+                              : <DefaultGraph zoomRange={defaultZoomRange} />}
                     </div>
                     {/* Zoom/pan bar — always visible below the chart */}
-                    {activeSelection?.timeRangeLabel === 'Current year' ? (
+                    {isCurrentYear ? (
                       <ZoomBar
-                        items={yearData.map(d => ({ label: d.monthLabel, value: d.expected, isOutage: d.actual === null }))}
+                        items={yearData.map(d => ({ label: d.axisMonth ?? `${new Date(d.date).getMonth() + 1}/${new Date(d.date).getFullYear()}`, value: d.expected, isOutage: d.actual === null }))}
                         zoomRange={yearZoomRange}
                         onZoomChange={setYearZoomRange}
+                      />
+                    ) : isCurrentWeek ? (
+                      <ZoomBar
+                        items={currentWeekData.map(d => ({ label: d.date, value: d.expected, isOutage: false }))}
+                        zoomRange={cwZoomRange}
+                        onZoomChange={setCwZoomRange}
+                      />
+                    ) : isPreviousWeek ? (
+                      <ZoomBar
+                        items={previousWeekData.map(d => ({ label: d.date, value: d.expected, isOutage: false }))}
+                        zoomRange={pwZoomRange}
+                        onZoomChange={setPwZoomRange}
+                      />
+                    ) : isCurrentMonth ? (
+                      <ZoomBar
+                        items={currentMonthData.map(d => ({ label: d.date, value: d.expected, isOutage: false }))}
+                        zoomRange={cmZoomRange}
+                        onZoomChange={setCmZoomRange}
                       />
                     ) : (
                       <ZoomBar
@@ -2229,7 +2404,6 @@ export function Home2Content({ activeSelection, onOpenSelection }: Home2ContentP
           )}
 
           {activeChartTab === 'grid' && (() => {
-            const isCurrentYear = activeSelection?.timeRangeLabel === 'Current year';
 
             // ── Shared cell renderer ──────────────────────────────────────────
             const thStyle: React.CSSProperties = {

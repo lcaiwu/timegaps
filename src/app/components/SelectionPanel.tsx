@@ -408,22 +408,50 @@ export function SelectionPanel({ onClose, onApply, activeTab: externalActiveTab,
 
   // Build an ActiveSelection from current state for the info box
   const buildActiveSelection = (): ActiveSelection => {
-    // Build time range label
+    // Build time range label — resolved to concrete dates where possible
     let timeRangeLabel = '';
     if (timeRangeType === 'presets') {
       if (selectedQuickOption === 'All data') {
         timeRangeLabel = 'All data';
-      } else if (selectedQuickOption === 'Specific date') {
-        timeRangeLabel = singleDate ? format(singleDate, 'M/d/yyyy') : 'No date selected';
-      } else if (['Last week', 'Last month', 'Last quarter', 'Last year', 'Year to date', 'Previous month', 'Previous quarter', 'Previous year', 'Current year', 'Current month', 'Current week', 'Previous quarter'].includes(selectedQuickOption)) {
-        timeRangeLabel = selectedQuickOption;
-      } else {
+      } else if (selectedQuickOption === 'Specific date' || selectedQuickOption === 'Single date') {
+        timeRangeLabel = singleDate ? format(singleDate, 'MM/dd/yyyy') : 'No date selected';
+      } else if (selectedQuickOption === 'Today') {
+        timeRangeLabel = format(today, 'MM/dd/yyyy');
+      } else if (selectedQuickOption === 'Yesterday') {
+        const yesterday = subDays(today, 1);
+        timeRangeLabel = format(yesterday, 'MM/dd/yyyy');
+      } else if (selectedQuickOption === 'Current week') {
+        timeRangeLabel = `${format(currentWeekStart, 'MM/dd/yyyy')} - ${format(today, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Current month') {
+        timeRangeLabel = `${format(currentMonthStart, 'MM/dd/yyyy')} - ${format(today, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Current year') {
+        timeRangeLabel = `${format(currentYearStart, 'MM/dd/yyyy')} - ${format(today, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Previous week') {
+        timeRangeLabel = `${format(previousWeekStart, 'MM/dd/yyyy')} - ${format(previousWeekEnd, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Previous month') {
+        timeRangeLabel = `${format(startOfMonth(subMonths(today, 1)), 'MM/dd/yyyy')} - ${format(endOfMonth(subMonths(today, 1)), 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Previous year') {
+        const prevYearStart = new Date(today.getFullYear() - 1, 0, 1);
+        const prevYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+        timeRangeLabel = `${format(prevYearStart, 'MM/dd/yyyy')} - ${format(prevYearEnd, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Last week') {
+        timeRangeLabel = `${format(subWeeks(today, 1), 'MM/dd/yyyy')} - ${format(today, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Last month') {
+        timeRangeLabel = `${format(subMonths(today, 1), 'MM/dd/yyyy')} - ${format(today, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Last year') {
+        timeRangeLabel = `${format(subYears(today, 1), 'MM/dd/yyyy')} - ${format(today, 'MM/dd/yyyy')}`;
+      } else if (selectedQuickOption === 'Relative') {
         timeRangeLabel = `Last ${relativeNumber} ${relativeUnit}`;
+      } else {
+        timeRangeLabel = selectedQuickOption;
       }
     } else if (timeRangeType === 'continuous') {
       if (continuousDateTimeRanges.length > 0) {
         const r = continuousDateTimeRanges[0];
         timeRangeLabel = `${r.fromDate} ${r.fromTime} - ${r.toDate} ${r.toTime}`;
+        if (continuousDateTimeRanges.length > 1) {
+          timeRangeLabel += ` (+${continuousDateTimeRanges.length - 1} more)`;
+        }
       } else {
         timeRangeLabel = 'Continuous range (not set)';
       }
@@ -439,8 +467,7 @@ export function SelectionPanel({ onClose, onApply, activeTab: externalActiveTab,
       }
     }
 
-    // Build days label
-    const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    // Build days label (compact, for the right side)
     const shortDays: Record<string, string> = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun' };
     let activeDays: string[] = [];
     if (timeRangeType === 'continuous') activeDays = continuousSelectedDays;
@@ -457,6 +484,28 @@ export function SelectionPanel({ onClose, onApply, activeTab: externalActiveTab,
     } else {
       daysLabel = activeDays.map(d => shortDays[d] || d).join(', ');
     }
+
+    // Full days-of-week label for the summary top-left (only when a non-default selection)
+    const daysOfWeekFull = activeDays.length > 0 && activeDays.length < 7
+      ? activeDays.map(d => shortDays[d] || d).join(', ')
+      : undefined;
+
+    // End-of-month options summary
+    const activeEom = timeRangeType === 'continuous'
+      ? continuousEndOfMonthOptions
+      : timeRangeType === 'discrete'
+        ? discreteEndOfMonthOptions
+        : endOfMonthOptions;
+    const eomParts: string[] = [];
+    if (activeEom.firstDay.enabled && activeEom.firstDay.value > 0)
+      eomParts.push(`First day(s) of the month: ${activeEom.firstDay.value}`);
+    if (activeEom.firstWeekday.enabled && activeEom.firstWeekday.value > 0)
+      eomParts.push(`First weekday(s) of the month: ${activeEom.firstWeekday.value}`);
+    if (activeEom.lastDay.enabled && activeEom.lastDay.value > 0)
+      eomParts.push(`Last day(s) of the month: ${activeEom.lastDay.value}`);
+    if (activeEom.lastWeekday.enabled && activeEom.lastWeekday.value > 0)
+      eomParts.push(`Last weekday(s) of the month: ${activeEom.lastWeekday.value}`);
+    const endOfMonthSummary = eomParts.length > 0 ? eomParts.join(', ') : undefined;
 
     // Interest group
     const ig = selectedInterestGroup.replace(' (Default)', '').replace(' (default)', '');
@@ -555,6 +604,8 @@ export function SelectionPanel({ onClose, onApply, activeTab: externalActiveTab,
       shifts: shiftsLabel,
       reportingInterval: riLabel,
       days: daysLabel,
+      daysOfWeekFull,
+      endOfMonthSummary,
       comparison,
     };
   };

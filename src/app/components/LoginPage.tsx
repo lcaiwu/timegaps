@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 const imgIso = 'http://localhost:3845/assets/1f61db23844351aa183667b340c0b2a7a2c83cad.png';
@@ -8,17 +8,32 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const STORAGE_KEY = 'intellimagic_remembered_username';
+
   const [step, setStep] = useState<'username' | 'password'>('username');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberUsername, setRememberUsername] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // On mount: restore saved username and check state
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      setUsername(saved);
+      setRememberUsername(true);
+    }
+  }, []);
+
   function handleContinue(e: React.FormEvent) {
     e.preventDefault();
-    if (username.trim()) {
-      setStep('password');
+    if (!username.trim()) return;
+    if (rememberUsername) {
+      localStorage.setItem(STORAGE_KEY, username.trim());
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
     }
+    setStep('password');
   }
 
   function handleLogin(e: React.FormEvent) {

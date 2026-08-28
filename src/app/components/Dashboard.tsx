@@ -92,6 +92,10 @@ export interface ActiveSelection {
   shifts: string;
   reportingInterval: string;
   days: string;
+  // Full days-of-week list for display (e.g. "Mon, Tue, Wed")
+  daysOfWeekFull?: string;
+  // End-of-month options summary for display
+  endOfMonthSummary?: string;
   comparison?: {
     mode: 'relative' | 'absolute';
     label: string;
@@ -106,7 +110,7 @@ const defaultSelection: ActiveSelection = {
   sysplexes: 'All sysplexes',
   shifts: 'All shifts',
   reportingInterval: 'Hour',
-  days: 'Thu',
+  days: 'Wed',
 };
 
 export function Dashboard() {
